@@ -1,17 +1,16 @@
 import numpy as np
-from rtlsdr import RtlSdr
+from rtlsdr import RtlSdr       #The RTL-SDR v4 uses Quadrature I/Q Sampling with 2.4mhz bandwidth
 from scipy.signal import decimate, firwin, lfilter
 import time
 
 import sounddevice as sd
 
-#already get a 2.4mhz bandwith (it just gets cut off later in demodulation)
-#
-for i in range(3):
+
+for i in range(1):
 #Configuration
     sdr = RtlSdr()          #create SDR object
     sdr.sample_rate = 2.4e6      #sample per second
-    sdr.center_freq = 100.7e6    #radio tuning
+    sdr.center_freq = 100.7e6    #radio tuning          (frequency is 100.7e6 but the baseband is zero) its like taring a scale
     sdr.gain = 'auto'           #higher = if signal stronger
                             #lower if signal is weaker
 
@@ -19,7 +18,7 @@ for i in range(3):
     freq_increase = sdr.center_freq + 200_000
     print("Receiving samples...")
     start_time = time.time()
-    samples = sdr.read_samples(2_400_000 * 0.25)  #2.4e6 samples read / 2.4e6 samples rate = 1 second
+    samples = sdr.read_samples(2_400_000 * 5)  #2.4e6 samples read / 2.4e6 samples rate = 1 second
     sdr.close()
     end_time = time.time()
 
@@ -27,19 +26,23 @@ for i in range(3):
     print(elapsed_time)
 
 
-    print("Signal power:", np.mean(np.abs(samples)))
+    print("Signal power:", np.mean(np.abs(samples))) #0.15 and greater is good, below 0.15 is weak
 
 # --- FM Demodulation ---
-nyq = sdr.sample_rate / 2
-cutoff = 200e3
-taps = firwin(101, cutoff / nyq) #filter length is 101, cutoff is 200khz (how FM bandwith works), normalized
+nyq = sdr.sample_rate / 2           #nyquist frequency
+cutoff = 200e3                      #200khz bandwidth for each station
+taps = firwin(101, cutoff / nyq) #filter length is 101 (how many previous samples are considered), normalized cutoff % (allow only frequencies from 0 to %) [taps is the weight on how much to emphasize each previous sample]
 
-filtered = lfilter(taps, 1.0, samples) #applies filter 
+filtered_samples = lfilter(taps, 1.0, samples) #applies filter to the I/Q samples (divide by 1, meaning just use the numerator taps on samples)
 print("Demodulating FM...")
-phase_diff = np.angle(filtered[1:] * np.conj(filtered[:-1]))    #actually demodulates (data stored in frequency)
+phase_diff = np.angle(filtered_samples[1:] * np.conj(filtered_samples[:-1]))    # complex number = filtered[n] * conj(filtered[n-1]) and then angle(complex number) to extract the phase difference between samples (FM = rate of change of phase)
+# think of it as a vector
+# (I, Q) points a direction (represented as a complex number which represents positive AND negative frequencies in baseband)
+# The angle of that vector is the phase (which shows where in the wave cycle the signal is)
+# Length = amplitude (strength of signal)
 
 # --- Downsample to audio rate ---
-audio = decimate(phase_diff, 10)  # 2.4 MHz → 240 kHz
+audio = decimate(phase_diff, 10)  # 2.4 MHz → 240 kHz       decimate applies low-pass filter + downsamples to avoid aliasing
 audio = decimate(audio, 5)        # 240 kHz → 48 kHz        (48khz )
 
 # Normalize
@@ -49,12 +52,6 @@ print("Playing audio...")
 sd.play(audio, 48000)
 sd.wait()
 
-#"C:\Users\Jazz\AppData\Local\Programs\Python\Python314\Lib\site-packages\rtlsdr\__init__.py"
-
-
-#look into rtl_power (sweeps data over wide frequency spectrum)
-#not useful for pipeline but it can detect active frequencies (can scan for strong signals in dB over frequency range)
-#can automatically discover stations in a new area
 
 #fingerprinting
 #audio -> time vs frequency (currently in amplitude v time) use short time fourier transform

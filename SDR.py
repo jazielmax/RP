@@ -18,7 +18,7 @@ for i in range(1):
     freq_increase = sdr.center_freq + 200_000
     print("Receiving samples...")
     start_time = time.time()
-    samples = sdr.read_samples(2_400_000 * 5)  #2.4e6 samples read / 2.4e6 samples rate = 1 second
+    samples = sdr.read_samples(2_400_000 * 1)  #2.4e6 samples read / 2.4e6 samples rate = 1 second
     sdr.close()
     end_time = time.time()
 

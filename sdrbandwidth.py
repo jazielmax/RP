@@ -14,7 +14,6 @@ sdr.gain = 'auto'           #higher = if signal stronger
                         #lower if signal is weaker
 
 
-freq_increase = sdr.center_freq + 200_000
 print("Receiving samples...")
 samples = sdr.read_samples(2_400_000 * 1)  #2.4e6 samples read / 2.4e6 samples rate = 1 second
 sdr.close()

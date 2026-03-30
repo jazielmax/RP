@@ -4,26 +4,12 @@ from scipy.signal import decimate, firwin, lfilter
 import matplotlib.pyplot as plt # used for pysdr example code
 import sounddevice as sd
 
-#Note that we need to use np.array SAMPLES not the fft (frequency domain) , 
-#-6.9e4 6.972e4 = 138,720, with threshold of 48 maybe we use a width of 100,000? set the cap to 200,000 to avoid interference
-# Now we need to calculate relativity! This was done with an estimated floor of 24.488740585217858 dbs
-#Noise at 23, desired signal at 43-60 (do note I've found signals also at 43 but peak at 55, and they are not strong signals/should not be considered)
 
-#proposed threshold:  23.5112594148 + the noise (note that I use PLUS not multiply as you should not use multiplication or divison with db's, so the realativity is just the threshold - floor)
-# proposed width: 100,000
+#NOTE: Signal detection should be done one chunk at a time, NOT: scan all, then process
+# NOTE: Power peaks may not denote a strong signal, as they can be short lived, it is also necessary to measure the width of the signal, as it should be close to the bandwidth of FM radio (200,000hz)
 
-#Current plan for signal detection:
-# 1. Estimate noise floor value
-# 2. Calculate relative threshold to deem a possible signal
-# 3. LOOK INTO Run the scipy correlate function on a possible signal with a hardcoded strong signal, and accept the signal as strong for a constant confidence value (maybe like 0.4-0.6 confidence). Use frequency
-# possibly use mode = 'fft'
-#4: Once you have a list of prospective signals, use a RMS (root mean square) threshold (must be relative to floor!) to guarantee all signals have no static noise
-
-# Note: Power peaks may not denote a strong signal, as they can be short lived, it is also necessary to measure the width of the signal, as it should be close to the bandwidth of FM radio (200,000hz)
-# LOOK INTO CONVERTING POWER IN FREQUENCY DOMAIN (X AXIS IS FREQUENCY) TO DB'S (decibels)
-
-threshholdForSignal = -1 # a global for now just to allow quick playing around (This is a very low threshold, I see most strong signals go to 1e7)
-thresholdForWidth = -1
+######################## Signal finding functions: ########################
+#TODO still haven't gotten to signal finding yet
 def convertRelativeFrequencyToActual(centralFreq, targetRelativeFrequency): # Given the location a desired frequency is on a sample ndArray, returns the actual frequency value that the signal is located at, as a sample is normally formatted in realativity to the central frequency
     return centralFreq + targetRelativeFrequency # targetFrequency should be relative, as the value is its distance from the central frequency, thats why this simple formula works
 
@@ -56,93 +42,107 @@ def findStrongSignals(centralFreq, representationOfFrequencies: np.ndarray): # G
             centerI, width = findCenterOfSignal(i)
             if width > thresholdForWidth:
                 ans.append(convertRelativeFrequencyToActual(centralFreq, centerI))
+
+######################## Basic signal I/O: ################################
+
+#This just behaves a parameterized variant of the sdr constructor
+def createSdrObj (sample_rate, center_freq, gain):
+    sdr = RtlSdr()
+    sdr.sample_rate = sample_rate
+    sdr.center_freq = center_freq # The center point of what will be recorded, in hz
+    sdr.gain = gain
+    return sdr
+
+#NOTE: WE NEED TO IMPLIMENT OF BAND PASS FILTER, NOT the current low-pass filter
+""" 
+Code example from pysdr:
+# Shift the filter in frequency by multiplying by exp(j*2*pi*f0*t)
+f0 = 10e3 # amount we will shift
+Ts = 1.0/sample_rate # sample period
+t = np.arange(0.0, Ts*len(h), Ts) # time vector. args are (start, stop, step)
+exponential = np.exp(2j*np.pi*f0*t) # this is essentially a complex sine wave
+h_band_pass = h * exponential # do the shift
+ """
+def extractFromTargetCenter(samples, sdr, relativeCenterFreq):
+    # 1. SHIFT THE SAMPLES: Drag the target signal down to 0 Hz
+    n = np.arange(len(samples))
+    shifted_samples = samples * np.exp(-1j * 2 * np.pi * relativeCenterFreq / sdr.sample_rate * n) # shifts the desired signal down to the central frequency location
+    nyq = sdr.sample_rate / 2 
+    cutoff = 100e3 # NOTE: firwin cutoff is from 0 to the edge, so you do bandwidth / 2. For 200kHz bandwidth, we want 100kHz cutoff.
+    tapCount = 101 
+    taps = firwin(tapCount, cutoff / nyq) 
+    filtered = lfilter(taps, 1.0, shifted_samples) # filters the signal at 0 (which is the target now)
+    return decimate(filtered, 10) # Decimate protects the signal at the central frequency, which is why we had to shift our target to the center
+
+
+def lowPassExtract(samples, sdr): # Retrieves the signal at central frequency
+    nyq = sdr.sample_rate / 2 # nyquist frequency
+    cutoff = 200e3 # cutoff is related to bandwidth
+    tapSize = 101 # larger = more computation, but more accurate
+    taps = firwin(tapSize, cutoff / nyq) # Creates the filter (FIR). Cut off is the width of the signal, we normalize by diving by the nyquist  
+    
+    return decimate( lfilter(taps, 1.0, samples), 10 ) #Uses the filter to cut out the target signal from the sample array
+
+def playAudio(target):
+    phase_diff = np.angle(target[1:] * np.conj(target[:-1]))  #actually demodulates (data stored in frequency)
+    # --- Downsample to audio rate ---
+    audio = decimate(phase_diff, 5)        # 240 kHz → 48 kHz        (48khz )
+    # Normalize
+    audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
+    print("Playing audio...")
+    sd.play(audio, 51200)
+    sd.wait() 
+
+#NOTE: MIGHT WANT TO RETURN LOWPASS/BANDPASS AS IT'S DECIMATED FORM, though we do need the raw form for RMS
+# Note that filtering retains the size of the array, decimate will actually shrink the array
+###########################################################################
 def main():
-    # reading is by default 2.4 MHZ
-
     #Reading
+    sample_rate = 2.56e6      # sample per second
+    #center_freq = 106.5e6
+    #center_freq = 101.7e6   # Strong signal  radio tuning i * 0.2e3
+    #center_freq = 104.10e6  # VERY GOOD SIGNAL FOR WEAKEST STRONG SIGNALS
+    #center_freq = 95.1e6
+    center_freq = 99.9e6
+    #center_freq = 94.7e6 Signal that is too weak/we dont want this to be counted!
+    gain = 'auto'
+    sdr = createSdrObj(sample_rate, center_freq, gain)          # create SDR object
 
-    sdr = RtlSdr()          # create SDR object
-    sdr.sample_rate = 2.56e6      # sample per second
+    print("Receiving samples...")
+    samples = sdr.read_samples(sdr.sample_rate * 3 )  #2.4e6 samples read / 2.4e6 samples rate = 1 second
 
-    sdr.gain = 'auto'           # higher = if signal weaker
-                            # lower if signal is stronger
-
-    for i in range(0,1):
-        print("Receiving samples...")
-        #sdr.center_freq = 101.7e6 + (i * 2.56e6 )   # Strong signal  radio tuning i * 0.2e3
-        #sdr.center_freq = 104.10e6 + (i * 2.56e6 )  # VERY GOOD SIGNAL FOR WEAKEST STRONG SIGNALS
-        sdr.center_freq = 106.5e6
-        #sdr.center_freq = 101.5e6 CASE WITH A LOT OF INTERFERING SIGNALS
-        #sdr.center_freq = 94.7e6 Signal that is too weak/we dont want this to be counted!
-        samples = sdr.read_samples(sdr.sample_rate * 2 )  #2.4e6 samples read / 2.4e6 samples rate = 1 second
-        #Interpretation
-        print("Signal power:", np.mean(np.abs(samples) ** 2))
-
-        # --- FM Demodulation ---
-        nyq = sdr.sample_rate / 2
-        cutoff = 200e3 # cutoff is related to bandwidth
-        taps = firwin(101, cutoff / nyq) #filter length is 101, cutoff is 200khz (how FM bandwith works), normalized
-    
-        filtered = lfilter(taps, 1.0, samples) #applies filter 
-        print("Demodulating FM...")
-        phase_diff = np.angle(filtered[1:] * np.conj(filtered[:-1]))    #actually demodulates (data stored in frequency)
-
-        #powerAtGivenHzOfBandwidth = (np.abs(samples)) ** 2 # power is a better measure for finding stations (as phase_diff can sometiems not change radically on a real station)
-
-        #centerI = int(sdr.sample_rate / 2)
-        #print("Power at curr Signal", powerAtGivenHzOfBandwidth[centerI])
-
-
-
-
-        # --- Downsample to audio rate ---
-        audio = decimate(phase_diff, 10)  # 2.4 MHz → 240 kHz
-        audio = decimate(audio, 5)        # 240 kHz → 48 kHz        (48khz )
-
-        # Normalize
-        audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
-
-        print("Playing audio...")
-        sd.play(audio, 48000)
-        sd.wait() 
-        
-
-
-
-        # signal detection code 
-        frequencyDom = np.fft.fftshift(np.fft.fft(samples))   # turns samples from time domain to frequency domain (what we want). 
-        powerFreqDom = np.abs(frequencyDom) ** 2
-        #We have to do a shift any time we do FFT (fast fourier transfer) as it outputs from Greatest to least, but we want lowest to heighest frequencies with 0 in the middle. This makes the center frequency located at 0 and allows us to determinine at what hz the frequencies are in relation to the central frequency
-        #powerArrInFrequencyDom = np.abs(frequencyDom) ** 2 # used to get power of frequency domaind
-        db = 10 * np.log10(powerFreqDom + 1e-12) # adding a very small amount ensures we do not do log10(0) which in matplotlib shows an empty/null value
-        
-        relativeThreshold = 23.5112594148 # distance from the floor that we consider a strong signal
-        floorEstimate = np.average(np.percentile(db, 15)) # noise estimate
-        strongSignalThreshold = floorEstimate + relativeThreshold
-        # Just a reminder, fftshift makes the central frequency located at n/2 (size of samples / 2)
-        rms =  np.sqrt(np.mean(np.square(samples)))# Root mean square is used to find how much noise is in a signal. IMPORANT: RMS MUST BE CALCULATED FROM TIME DOMAIN
-        print ("Guess of noise: " + str(floorEstimate) + "\nProposed threshold: " + str(strongSignalThreshold))
-        #centerIdxInSample = len(DbFS) // 2
-        #print("Power at curr Signal", DbFS[centerIdxInSample]) # returns the power at the central frequency (currently set to be a strong signal)
-
-        #TODO:  NEED TO LEARN HOW TO EXTRACT A SINGLE SIGNAL FROM THE TIME DOMAIN (SAMPLE ARRAY)
-
-
-
-         
-        ######### CODE TAKEN FROM PYSDR.org#######################
-        Fs = 1 # Hz   
-        S_mag = db# gives us power for the y axis
-        #f = np.arange(sdr.sample_rate/-2, sdr.sample_rate/2, Fs) # now x axis is in terms of bandwidth Hz. np.arrange works like this: 1st param is start, 2nd param is stop, 3rd param is step size of graph (1 is preferred in this case)
-        f = f = np.linspace(sdr.sample_rate/-2, sdr.sample_rate/2, num=db.size)
-        plt.plot(f, S_mag,'.-')
-        plt.show()
-        ########################################################## 
+    # --- FM Demodulation ---
+    print("Demodulating FM...")
+    #filtered = lowPassExtract(samples, sdr) # note that filtered is effectively the signal at central frequency (when don e with low-pass filter)
+    filtered = extractFromTargetCenter(samples, sdr, 0)
+    playAudio(filtered)
     
 
+    # signal detection code 
+    frequencyDom = np.fft.fftshift(np.fft.fft(samples))   # turns samples from time domain to frequency domain (what we want). 
+    powerFreqDom = np.abs(frequencyDom) ** 2
+    db = 10 * np.log10(powerFreqDom) # adding a very small amount ensures we do not do log10(0) which in matplotlib shows an empty/null value
+    #We have to do a shift any time we do FFT (fast fourier transfer) as it outputs from Greatest to least, but we want lowest to heighest frequencies with 0 in the middle. This makes the center frequency located at 0 and allows us to determinine at what hz the frequencies are in relation to the central frequency    
+    relativeThresholdVal = 23.5112594148 # distance from the floor that we consider a strong signal
+    floorEstimate = np.average(np.percentile(db, 15)) # noise estimate
+    strongSignalThreshold = floorEstimate + relativeThresholdVal
+    strongSignalWidth = 100_000 # The width signal must be do be considered strong 
 
-        # note that with fast fourier transfer, power grows by amplitude ^ 2 * n (number of samples!) So our measurement must stick to one specific sample rate, or else our code wont work
+    # Relative RMS value for a clear signal:
+    rms =  np.sqrt(np.mean(np.abs(filtered) ** 2))# Root mean square is used to find how much noise is in a signal. IMPORANT: RMS MUST BE CALCULATED FROM TIME DOMAIN
+    rms_inDb = 20 * np.log10(rms) 
+    print ("Guess of noise floor: " + str(floorEstimate) + "\nProposed threshold: " + str(strongSignalThreshold) + "\nRMS value:" + str(rms_inDb))
+    
+    #TODO:  NEED TO LEARN HOW TO EXTRACT A SINGLE SIGNAL FROM THE TIME DOMAIN/IQ (SAMPLE ARRAY)
 
+    ######### CODE TAKEN FROM PYSDR.org#######################
+    Fs = 1 # Hz   
+    S_mag = db# gives us power for the y axis
+    #f = np.arange(sdr.sample_rate/-2, sdr.sample_rate/2, Fs) # now x axis is in terms of bandwidth Hz. np.arrange works like this: 1st param is start, 2nd param is stop, 3rd param is step size of graph (1 is preferred in this case)
+    f = f = np.linspace(sdr.sample_rate/-2, sdr.sample_rate/2, num=db.size)
+    plt.plot(f, S_mag,'.-')
+    plt.show()
+    ########################################################## 
     sdr.close()
     #look into rtl_power (sweeps data over wide frequency spectrum)
 
@@ -150,13 +150,27 @@ if __name__ == "__main__":
     main()
 
 
+    #Current plan for strong signal detection:
+    # 1. Estimate noise floor value
+    # 2. Calculate relative threshold to deem a possible signal
+    # 3(optional). LOOK INTO Run the scipy correlate function on a possible signal with a hardcoded strong signal, and accept the signal as strong for a constant confidence value (maybe like 0.4-0.6 confidence). Use frequency
+    # possibly use mode = 'fft'
+    #4: Once you have a list of prospective signals, use a RMS on each with a RMS (root mean square) threshold (must be relative to floor!) to guarantee all signals have no static noise
+    #relativity testing:
+    # width: -6.9e4 6.972e4 = 138,720, with threshold of 48 maybe we use a width of 100,000? set the cap to 200,000 to avoid interference
+    # Now we need to calculate relativity! This was done with an estimated floor of 24.488740585217858 dbs
+    # Noise at 23, desired signal at 43 low - 60 peak (do note I've found signals also at 43 but peak at 55, and they are not strong signals/should not be considered)
+    # proposed threshold:  23.5112594148 + the noise (note that I use PLUS not multiply as you should not use multiplication or divison with db's, so the relativity is just the threshold - floor)
+    # proposed width: 100,000
 
-#NOTES
-# Wall width
-#1.98e5 - 1.154e5 = 82600hz walls
-#Wall height = 55.1db's
-#note that walls do NOT count towards signal we want to read, so they act as a hinderance. This is why we actually might need to check the full width
-#   Fix for the walls is just do do a slightly less than 100,000hz jump when finding strong + wide enough signal
-#First trial params:
-# width: 5.7e4 - 4.459e4
-# height: 47.9dbs
+
+    #Removing cases with signal noise (note we have to do this for EACH candidate):
+    #Steps: 
+    #1. Using location of signal, use filtering to extract the signal from the IQ version (samples np.ndarray) 
+    #2. Calculate RMS of the signal (just do root(mean(square()))), then convert to decibels with 20 * log10(RMSval).if its lower than the RELATIVE rms threshold, then we discard it
+    #centerIdxInSample = len(db) // 2
+    #Noisy rms: -33.22287864097743 at floor of 24.746768491034196
+    #Clear rms case: - -28.8296887404954 at noise floor of 32.22499718260055
+
+    #NOTE fftshift makes the central frequency located at n/2 (size of samples / 2)
+    #NOTE taps - 1 / 2 will adjust a lfilter to for 0 to be central frequency

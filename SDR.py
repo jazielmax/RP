@@ -3,46 +3,58 @@ from rtlsdr import RtlSdr
 from scipy.signal import decimate, firwin, lfilter
 import matplotlib.pyplot as plt # used for pysdr example code
 import sounddevice as sd
-
+#TODO: centerI being returned from strong signal is literal outside of the possible scan range
 
 #NOTE: Signal detection should be done one chunk at a time, NOT: scan all, then process
 # NOTE: Power peaks may not denote a strong signal, as they can be short lived, it is also necessary to measure the width of the signal, as it should be close to the bandwidth of FM radio (200,000hz)
 
+time = 5
 ######################## Signal finding functions: ########################
-#TODO still haven't gotten to signal finding yet
 def convertRelativeFrequencyToActual(centralFreq, targetRelativeFrequency): # Given the location a desired frequency is on a sample ndArray, returns the actual frequency value that the signal is located at, as a sample is normally formatted in realativity to the central frequency
     return centralFreq + targetRelativeFrequency # targetFrequency should be relative, as the value is its distance from the central frequency, thats why this simple formula works
 
-def findCenterOfSignal(representationOfFrequencies, i): # Given the starting loation of a signal, traverses the signal till it finds the peak. I will return the end of the signal, so we make sure to not count the same signal twice
+#Returns the peak of a signal and its width
+def getSignalAttributes(i, representationOfFrequencies, threshholdForSignal): # Given the starting loation of a signal, traverses the signal till it finds the peak. I will return the end of the signal, so we make sure to not count the same signal twice
+    #impliment guard system, as dips may occur even on strong signals, wewe need a guard of some sort (maybe around 10-15ish)
+    guardStart = 50 # NOTE: We need to play around with this value
+    guard = guardStart
     startI = i
-    max = -1
+    max = -100 #Because I'm using personally using decibels, negative values are possible, so the starting value is -100 db 
     maxI = -1
     sampleLength = len(representationOfFrequencies)
     while True: #Just a goofy do while-like to allow repOfFreq to be a var (condenses code)
         currYVal = representationOfFrequencies[i]
-        if currYVal < threshholdForSignal or i >= sampleLength: 
-            i-=1 #If here, it means the i before it was the last frequency of signal
+        if currYVal < threshholdForSignal: 
+            guard-=1
+        else:
+            guard = guardStart
+        if i >= sampleLength or guard <= 0: 
+            i-=1 #Sort of pointless, but If here, it means the i before it was the last frequency of signal
             break #case to end while
-        if currYVal > max: 
-            max = currYVal
+        if currYVal > max: # Keeping track of where peak is
+            max = currYVal # Strength of peak
             maxI = i # the location of the highest recorded peak
         i+=1
-    #Note that the maxI value that is returned is stored as a relative frequency, as it it states how far away it is from the central frequency. This must be converted (though the convertRelativeFrequencyToActual) in order for it to be useful
-    return (maxI, i - startI) #left is the center frequencies's location, right is the width of the signal (as i is the end index, startI is the start)
-#representationOfFrequencies[i] > threshholdForSignal and i < sampleLength
+    #NOTE: The maxI value that is returned is stored as a relative frequency, as it it states how far away it is from the central frequency. This must be converted (though the convertRelativeFrequencyToActual) in order for it to be useful
+    return (maxI, i - startI, i + 1000) # maxI = center, i-startI = width, i = end. DECIDE WHETHER OR NOT TO KEEP + 1000
 
-def findStrongSignals(centralFreq, representationOfFrequencies: np.ndarray): # Given a frequency domain sample already set for power, returns the frequencies where the center of strong signals are
+def findStrongSignals(centralFreq, representationOfFrequencies: np.ndarray, threshholdForSignal, thresholdForWidth, sample_rate): # Given a frequency domain sample already set for power, returns the frequencies where the center of strong signals are
     ans = [] # will hold a list frequencies
-    samplelength = len(representationOfFrequencies)
+    sampleLength = len(representationOfFrequencies)
     centerI = -1
     width = -1
     i = 0
-    while i < samplelength: 
+    while i < sampleLength: 
         if(representationOfFrequencies[i] >= threshholdForSignal):
-            centerI, width = findCenterOfSignal(i)
-            if width > thresholdForWidth:
-                ans.append(convertRelativeFrequencyToActual(centralFreq, centerI))
-
+            centerI, width, i = getSignalAttributes(i, representationOfFrequencies, threshholdForSignal) # i gets set to the end of the signal
+            if width >= thresholdForWidth:
+                offset = (centerI - sampleLength/2) * (sample_rate / sampleLength) # offset is distance from strong signal to central_frequency
+                #ans.append(convertRelativeFrequencyToActual(centralFreq, centerI)) # consider some form of floor or ceiling? Most signals are like 101.1e6, so we only need
+                ans.append((centralFreq, offset)) # TESTING VERSION FOR SEEING IF IT WORKS
+        else:
+            i+=1
+    return ans
+#NOTE Maybe after finding strong signal we skip around 5,000hz? Guarantees to not include high interference signal
 ######################## Basic signal I/O: ################################
 
 #This just behaves a parameterized variant of the sdr constructor
@@ -54,15 +66,7 @@ def createSdrObj (sample_rate, center_freq, gain):
     return sdr
 
 #NOTE: WE NEED TO IMPLIMENT OF BAND PASS FILTER, NOT the current low-pass filter
-""" 
-Code example from pysdr:
-# Shift the filter in frequency by multiplying by exp(j*2*pi*f0*t)
-f0 = 10e3 # amount we will shift
-Ts = 1.0/sample_rate # sample period
-t = np.arange(0.0, Ts*len(h), Ts) # time vector. args are (start, stop, step)
-exponential = np.exp(2j*np.pi*f0*t) # this is essentially a complex sine wave
-h_band_pass = h * exponential # do the shift
- """
+
 def extractFromTargetCenter(samples, sdr, relativeCenterFreq):
     # 1. SHIFT THE SAMPLES: Drag the target signal down to 0 Hz
     n = np.arange(len(samples))
@@ -80,7 +84,6 @@ def lowPassExtract(samples, sdr): # Retrieves the signal at central frequency
     cutoff = 200e3 # cutoff is related to bandwidth
     tapSize = 101 # larger = more computation, but more accurate
     taps = firwin(tapSize, cutoff / nyq) # Creates the filter (FIR). Cut off is the width of the signal, we normalize by diving by the nyquist  
-    
     return decimate( lfilter(taps, 1.0, samples), 10 ) #Uses the filter to cut out the target signal from the sample array
 
 def playAudio(target):
@@ -98,25 +101,24 @@ def playAudio(target):
 ###########################################################################
 def main():
     #Reading
+    #time = 5
     sample_rate = 2.56e6      # sample per second
-    #center_freq = 106.5e6
+    center_freq = 105.5e6
     #center_freq = 101.7e6   # Strong signal  radio tuning i * 0.2e3
     #center_freq = 104.10e6  # VERY GOOD SIGNAL FOR WEAKEST STRONG SIGNALS
-    #center_freq = 95.1e6
-    center_freq = 99.9e6
+    #center_freq = 102.1e6
+    #center_freq = 99.9e6
     #center_freq = 94.7e6 Signal that is too weak/we dont want this to be counted!
     gain = 'auto'
     sdr = createSdrObj(sample_rate, center_freq, gain)          # create SDR object
 
     print("Receiving samples...")
-    samples = sdr.read_samples(sdr.sample_rate * 3 )  #2.4e6 samples read / 2.4e6 samples rate = 1 second
+    samples = sdr.read_samples(sdr.sample_rate * time )  #2.4e6 samples read / 2.4e6 samples rate = 1 second
 
     # --- FM Demodulation ---
     print("Demodulating FM...")
     #filtered = lowPassExtract(samples, sdr) # note that filtered is effectively the signal at central frequency (when don e with low-pass filter)
-    filtered = extractFromTargetCenter(samples, sdr, 0)
-    playAudio(filtered)
-    
+    #filtered = extractFromTargetCenter(samples, sdr, 0)
 
     # signal detection code 
     frequencyDom = np.fft.fftshift(np.fft.fft(samples))   # turns samples from time domain to frequency domain (what we want). 
@@ -126,24 +128,37 @@ def main():
     relativeThresholdVal = 23.5112594148 # distance from the floor that we consider a strong signal
     floorEstimate = np.average(np.percentile(db, 15)) # noise estimate
     strongSignalThreshold = floorEstimate + relativeThresholdVal
-    strongSignalWidth = 100_000 # The width signal must be do be considered strong 
+    strongSignalWidth = 90_000 # The width signal must be do be considered strong 
 
-    # Relative RMS value for a clear signal:
-    rms =  np.sqrt(np.mean(np.abs(filtered) ** 2))# Root mean square is used to find how much noise is in a signal. IMPORANT: RMS MUST BE CALCULATED FROM TIME DOMAIN
-    rms_inDb = 20 * np.log10(rms) 
+
+    # Finding all strong signals
+    strongSignals = findStrongSignals(sdr.center_freq, db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate)
+    for signal in strongSignals: # Plays all signals
+        print("Strong signal found at: " + (f"{signal[1]:.2e}"))
+        filtered = extractFromTargetCenter(samples, sdr, signal[1])
+        playAudio(filtered)
+
+    # tests on signal at central frequency
+    filtered = lowPassExtract(samples, sdr)
+    rms =  np.sqrt(np.mean(np.abs(filtered) ** 2))
+    rms_inDb = 20 * np.log10(rms)
     print ("Guess of noise floor: " + str(floorEstimate) + "\nProposed threshold: " + str(strongSignalThreshold) + "\nRMS value:" + str(rms_inDb))
-    
-    #TODO:  NEED TO LEARN HOW TO EXTRACT A SINGLE SIGNAL FROM THE TIME DOMAIN/IQ (SAMPLE ARRAY)
+    # Relative RMS value for a clear signal:
+    #rms =  np.sqrt(np.mean(np.abs(filtered) ** 2))# Root mean square is used to find how much noise is in a signal. IMPORANT: RMS MUST BE CALCULATED FROM TIME DOMAIN
+    #rms_inDb = 20 * np.log10(rms) 
+    #print ("Guess of noise floor: " + str(floorEstimate) + "\nProposed threshold: " + str(strongSignalThreshold) + "\nRMS value:" + str(rms_inDb))
 
+    sdr.close()
     ######### CODE TAKEN FROM PYSDR.org#######################
+    """ 
     Fs = 1 # Hz   
     S_mag = db# gives us power for the y axis
-    #f = np.arange(sdr.sample_rate/-2, sdr.sample_rate/2, Fs) # now x axis is in terms of bandwidth Hz. np.arrange works like this: 1st param is start, 2nd param is stop, 3rd param is step size of graph (1 is preferred in this case)
-    f = f = np.linspace(sdr.sample_rate/-2, sdr.sample_rate/2, num=db.size)
+    f = f = np.linspace( sdr.sample_rate / -2, sdr.sample_rate / 2, num=db.size)
     plt.plot(f, S_mag,'.-')
-    plt.show()
-    ########################################################## 
-    sdr.close()
+    #plt.ion()
+    plt.show() 
+     """
+    ##########################################################
     #look into rtl_power (sweeps data over wide frequency spectrum)
 
 if __name__ == "__main__":

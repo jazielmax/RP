@@ -92,18 +92,18 @@ def lowPassExtract(samples, sdr): # Retrieves the signal at central frequency
     taps = firwin(tapSize, cutoff / nyq) # Creates the filter (FIR). Cut off is the width of the signal, we normalize by diving by the nyquist  
     return decimate( lfilter(taps, 1.0, samples), 10 ) #Uses the filter to cut out the target signal from the sample array
 
-def recordAudio(target, fileName):
+def formatSignalForAudio(target):
     phase_diff = np.angle(target[1:] * np.conj(target[:-1]))  #actually demodulates (data stored in frequency)
     # --- Downsample to audio rate ---
     audio = decimate(phase_diff, 6)        # 256 kHz → 48 kHz        (48khz )
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
-    print("Recording audio...")
+    return audio
 
     #TODO: Store np.array into JSON file, key is frequency of center (possibly store full result in array first for analysis)
+
     #scipy.io.wavfile.write(fileName, 42660, audio) Actual application code MAIN DO THIS COMMENT BELOW OUT
-    sd.play(audio, 42660)
-    sd.wait() 
+   
 
 
 
@@ -120,8 +120,42 @@ def calcRelativeStrength(db):
     return floorEstimate + relativeThresholdVal
 
 def findAllSignalsInFM(sdr, recordingDuration):
+    ans = {}
     #strongSignalWidth = 106_000 # The width signal must be do be considered strong 
-    strongSignalWidth = 102_000 # The width signal must be do be considered strong 
+    strongSignalWidth = 105_000 # The width signal must be do be considered strong 
+    for i in range(1,9): # we scan 8 times (1-8)
+        print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
+        samples = sdr.read_samples(sdr.sample_rate * recordingDuration) 
+        db = convertIQSamplesToDB(samples)
+        strongSignalThreshold = calcRelativeStrength(db) # defines what signal strength (in db) is considered strong
+        strongSignals = findStrongSignals(db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate) # finds strong signals within sample
+        for signal in strongSignals: # Plays all signals
+            frequencyLocation = convertRelativeFrequencyToActual(sdr.center_freq, signal)
+            print("Strong signal found at: " + (f"{frequencyLocation:.2e}"))
+            filtered = extractFromTargetCenter(samples, sdr, signal)
+            rawAudioArr = formatSignalForAudio(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
+            ans = {frequencyLocation : rawAudioArr}
+        sdr.center_freq += sdr.sample_rate #Traverses the next sample
+    return ans
+            
+            
+
+""" Old version (just plays audio)
+def recordAudio(target, fileName):
+    phase_diff = np.angle(target[1:] * np.conj(target[:-1]))  #actually demodulates (data stored in frequency)
+    # --- Downsample to audio rate ---
+    audio = decimate(phase_diff, 6)        # 256 kHz → 48 kHz        (48khz )
+    # Normalize
+    audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
+    print("Recording audio...")
+    sd.play(audio, 42660)
+    sd.wait() 
+
+
+
+def findAllSignalsInFM(sdr, recordingDuration):
+    #strongSignalWidth = 106_000 # The width signal must be do be considered strong 
+    strongSignalWidth = 105_000 # The width signal must be do be considered strong 
     for i in range(1,9): # we scan 8 times (1-8)
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
         samples = sdr.read_samples(sdr.sample_rate * recordingDuration) 
@@ -134,8 +168,10 @@ def findAllSignalsInFM(sdr, recordingDuration):
             filtered = extractFromTargetCenter(samples, sdr, signal)
             recordAudio(filtered, "test.wav") # TODO: WILL STORE RESULT IN ARRAY FORM
         sdr.center_freq += sdr.sample_rate #Traverses the next sample
-            
-            
+
+
+ """
+
 
 #NOTE: MIGHT WANT TO RETURN LOWPASS/BANDPASS AS IT'S DECIMATED FORM, though we do need the raw form for RMS
 # Note that filtering retains the size of the array, decimate will actually shrink the array
@@ -186,8 +222,8 @@ def main():
         recordAudio(filtered, "test.wav")
         #fileCount+=1 
     """
-    findAllSignalsInFM(sdr, 5)
-        
+    allDetectedSignals = findAllSignalsInFM(sdr, 2)
+    print("done!")
 
     # tests on signal at central frequency
     """ filtered = lowPassExtract(samples, sdr)

@@ -114,13 +114,16 @@ def convertIQSamplesToDB(samples):
     return 10 * np.log10(powerFreqDom) # db representation
 
 def calcRelativeStrength(db):
-    relativeThresholdVal = 23.5112594148 # distance from the floor that we consider a strong signal
+    #relativeThresholdVal = 23.5112594148 # distance from the floor that we consider a strong signal
+    relativeThresholdVal = 25 #Pretty good! Guaranteed a strong signal, set with width of 100,000 and found 
     floorEstimate = np.average(np.percentile(db, 15)) # noise estimate, its the bottom 15% of signal strengths
     return floorEstimate + relativeThresholdVal
 
 def findAllSignalsInFM(sdr, recordingDuration):
-    strongSignalWidth = 85_000 # The width signal must be do be considered strong 
+    #strongSignalWidth = 106_000 # The width signal must be do be considered strong 
+    strongSignalWidth = 102_000 # The width signal must be do be considered strong 
     for i in range(1,9): # we scan 8 times (1-8)
+        print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
         samples = sdr.read_samples(sdr.sample_rate * recordingDuration) 
         db = convertIQSamplesToDB(samples)
         strongSignalThreshold = calcRelativeStrength(db) # defines what signal strength (in db) is considered strong
@@ -130,8 +133,9 @@ def findAllSignalsInFM(sdr, recordingDuration):
             print("Strong signal found at: " + (f"{frequencyLocation:.2e}"))
             filtered = extractFromTargetCenter(samples, sdr, signal)
             recordAudio(filtered, "test.wav") # TODO: WILL STORE RESULT IN ARRAY FORM
-            sdr.center_freq += sdr.sample_rate #Traverses the next sample
-            print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
+        sdr.center_freq += sdr.sample_rate #Traverses the next sample
+            
+            
 
 #NOTE: MIGHT WANT TO RETURN LOWPASS/BANDPASS AS IT'S DECIMATED FORM, though we do need the raw form for RMS
 # Note that filtering retains the size of the array, decimate will actually shrink the array

@@ -98,16 +98,15 @@ def formatSignalForAudio(target):
     audio = decimate(phase_diff, 6)        # 256 kHz → 48 kHz        (48khz )
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
-    return audio
+
+    sd.play(audio, 42660)
+    sd.wait()
+    return audio 
 
     #TODO: Store np.array into JSON file, key is frequency of center (possibly store full result in array first for analysis)
 
     #scipy.io.wavfile.write(fileName, 42660, audio) Actual application code MAIN DO THIS COMMENT BELOW OUT
    
-
-
-
-
 def convertIQSamplesToDB(samples):
     frequencyDom = np.fft.fftshift(np.fft.fft(samples))   # turns samples from time domain to frequency domain (what we want). 
     powerFreqDom = np.abs(frequencyDom) ** 2
@@ -122,7 +121,7 @@ def calcRelativeStrength(db):
 def findAllSignalsInFM(sdr, recordingDuration):
     ans = {}
     #strongSignalWidth = 106_000 # The width signal must be do be considered strong 
-    strongSignalWidth = 105_000 # The width signal must be do be considered strong 
+    strongSignalWidth = 107_000 # The width signal must be do be considered strong 
     for i in range(1,9): # we scan 8 times (1-8)
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
         samples = sdr.read_samples(sdr.sample_rate * recordingDuration) 
@@ -134,10 +133,12 @@ def findAllSignalsInFM(sdr, recordingDuration):
             print("Strong signal found at: " + (f"{frequencyLocation:.2e}"))
             filtered = extractFromTargetCenter(samples, sdr, signal)
             rawAudioArr = formatSignalForAudio(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
-            ans = {frequencyLocation : rawAudioArr}
-        sdr.center_freq += sdr.sample_rate #Traverses the next sample
+            print("Before: " + str(frequencyLocation) + "  After: " + str(round( (round(frequencyLocation, 5) / 1e6), 1)))
+            ans[round( (round(frequencyLocation, 5) / 1e6), 1) ] = rawAudioArr #returns the frequency in MHz (so 101 = 101e6)
+        sdr.center_freq += sdr.sample_rate - 200_000 #Traverses the next sample, with 200,000 hz of overlap to prevent ALL edge clipping
+        #sdr.center_freq += (sdr.sample_rate) #Traverses the next sample, with 200,000 hz of overlap to prevent ALL clipping
     return ans
-            
+             
             
 
 """ Old version (just plays audio)
@@ -168,110 +169,25 @@ def findAllSignalsInFM(sdr, recordingDuration):
             filtered = extractFromTargetCenter(samples, sdr, signal)
             recordAudio(filtered, "test.wav") # TODO: WILL STORE RESULT IN ARRAY FORM
         sdr.center_freq += sdr.sample_rate #Traverses the next sample
+"""
 
+ 
 
- """
-
-
-#NOTE: MIGHT WANT TO RETURN LOWPASS/BANDPASS AS IT'S DECIMATED FORM, though we do need the raw form for RMS
-# Note that filtering retains the size of the array, decimate will actually shrink the array
 ###########################################################################
 def main():
-
-    strongSignals = []
-    #Reading
-    #time = 5
     sample_rate = 2.56e6      # sample per second
-    center_freq = 87.8125e6 # exact starting point to guaratee the 8th scan will fully be in the FM band (not partially outside)
-    #center_freq = 101.7e6   # Strong signal  radio tuning i * 0.2e3
-    #center_freq = 104.10e6  # VERY GOOD SIGNAL FOR WEAKEST STRONG SIGNALS
-    #center_freq = 102.1e6
-    #center_freq = 99.9e6
-    #center_freq = 94.7e6 Signal that is too weak/we dont want this to be counted!
+    center_freq = 89e6 # exact starting point to guarantee the 8th scan will fully be in the FM band (not partially outside)
+    #center_freq = 89.285e6 old val
     gain = 'auto'
-    sdr = createSdrObj(sample_rate, center_freq, gain)          # create SDR object
-
-    print("Receiving samples...")
-    #samples = sdr.read_samples(sdr.sample_rate * time )  #2.4e6 samples read / 2.4e6 samples rate = 1 second
-
-    # --- FM Demodulation ---
-    print("Demodulating FM...")
-    #filtered = lowPassExtract(samples, sdr) # note that filtered is effectively the signal at central frequency (when don e with low-pass filter)
-    #filtered = extractFromTargetCenter(samples, sdr, 0)
-
-    # signal detection code 
-    """ frequencyDom = np.fft.fftshift(np.fft.fft(samples))   # turns samples from time domain to frequency domain (what we want). 
-    powerFreqDom = np.abs(frequencyDom) ** 2
-    db = 10 * np.log10(powerFreqDom) # adding a very small amount ensures we do not do log10(0) which in matplotlib shows an empty/null value
-    #We have to do a shift any time we do FFT (fast fourier transfer) as it outputs from Greatest to least, but we want lowest to heighest frequencies with 0 in the middle. This makes the center frequency located at 0 and allows us to determinine at what hz the frequencies are in relation to the central frequency    
- """
-   
-
+    sdr = createSdrObj(sample_rate, center_freq, gain)  # create SDR object
 
     # Finding all strong signals
-    """ 
-     relativeThresholdVal = 23.5112594148 # distance from the floor that we consider a strong signal
-    floorEstimate = np.average(np.percentile(db, 15)) # noise estimate
-    strongSignalThreshold = floorEstimate + relativeThresholdVal
-    strongSignals = findStrongSignals(sdr.center_freq, db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate)
-    for signal in strongSignals: # Plays all signals
-        frequencyLocation = convertRelativeFrequencyToActual(sdr.center_freq, signal[1])
-        print("Strong signal found at: " + (f"{frequencyLocation:.2e}"))
-        filtered = extractFromTargetCenter(samples, sdr, signal[1])
-        #global fileCount
-        recordAudio(filtered, "test.wav")
-        #fileCount+=1 
-    """
-    allDetectedSignals = findAllSignalsInFM(sdr, 2)
+    allDetectedSignals = findAllSignalsInFM(sdr, 5)
     print("done!")
-
-    # tests on signal at central frequency
-    """ filtered = lowPassExtract(samples, sdr)
-    rms =  np.sqrt(np.mean(np.abs(filtered) ** 2))
-    rms_inDb = 20 * np.log10(rms)
-    print ("Guess of noise floor: " + str(floorEstimate) + "\nProposed threshold: " + str(strongSignalThreshold) + "\nRMS value:" + str(rms_inDb)) """
-    # Relative RMS value for a clear signal:
-    #rms =  np.sqrt(np.mean(np.abs(filtered) ** 2))# Root mean square is used to find how much noise is in a signal. IMPORANT: RMS MUST BE CALCULATED FROM TIME DOMAIN
-    #rms_inDb = 20 * np.log10(rms) 
-    #print ("Guess of noise floor: " + str(floorEstimate) + "\nProposed threshold: " + str(strongSignalThreshold) + "\nRMS value:" + str(rms_inDb))
-
     sdr.close()
-    ######### CODE TAKEN FROM PYSDR.org#######################
-    
-    #Fs = 1 # Hz   
-    #S_mag = db# gives us power for the y axis
-    #f = f = np.linspace( sdr.sample_rate / -2, sdr.sample_rate / 2, num=db.size)
-    #plt.plot(f, S_mag,'.-')
-    #plt.show() 
-     
-    ##########################################################
-    #look into rtl_power (sweeps data over wide frequency spectrum)
 
 if __name__ == "__main__":
     main()
 
 
-    #Current plan for strong signal detection:
-    # 1. Estimate noise floor value
-    # 2. Calculate relative threshold to deem a possible signal
-    # 3(optional). LOOK INTO Run the scipy correlate function on a possible signal with a hardcoded strong signal, and accept the signal as strong for a constant confidence value (maybe like 0.4-0.6 confidence). Use frequency
-    # possibly use mode = 'fft'
-    #4: Once you have a list of prospective signals, use a RMS on each with a RMS (root mean square) threshold (must be relative to floor!) to guarantee all signals have no static noise
-    #relativity testing:
-    # width: -6.9e4 6.972e4 = 138,720, with threshold of 48 maybe we use a width of 100,000? set the cap to 200,000 to avoid interference
-    # Now we need to calculate relativity! This was done with an estimated floor of 24.488740585217858 dbs
-    # Noise at 23, desired signal at 43 low - 60 peak (do note I've found signals also at 43 but peak at 55, and they are not strong signals/should not be considered)
-    # proposed threshold:  23.5112594148 + the noise (note that I use PLUS not multiply as you should not use multiplication or divison with db's, so the relativity is just the threshold - floor)
-    # proposed width: 100,000
-
-
-    #Removing cases with signal noise (note we have to do this for EACH candidate):
-    #Steps: 
-    #1. Using location of signal, use filtering to extract the signal from the IQ version (samples np.ndarray) 
-    #2. Calculate RMS of the signal (just do root(mean(square()))), then convert to decibels with 20 * log10(RMSval).if its lower than the RELATIVE rms threshold, then we discard it
-    #centerIdxInSample = len(db) // 2
-    #Noisy rms: -33.22287864097743 at floor of 24.746768491034196
-    #Clear rms case: - -28.8296887404954 at noise floor of 32.22499718260055
-
-    #NOTE fftshift makes the central frequency located at n/2 (size of samples / 2)
-    #NOTE taps - 1 / 2 will adjust a lfilter to for 0 to be central frequency
+#HUGE TODO: MERGE SCANS TOGETHER INTO ONE MEGA SCAN

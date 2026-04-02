@@ -135,8 +135,8 @@ def removeDuplicateStations(ans): #Center freq means no other centers should be 
 def findAllSignalsInFM(sdr, recordingDuration):
     ans = {}
     rawAns = []
-    #strongSignalWidth = 107_000 # The width signal must be do be considered strong 
-    strongSignalWidth = 108_000 # The width signal must be do be considered strong 
+    #strongSignalWidth = 108_000 # The width signal must be do be considered strong 
+    strongSignalWidth = 109_000 # The width signal must be do be considered strong 
     for i in range(1,10): # we scan 8 times (1-8)
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
         samples = sdr.read_samples(sdr.sample_rate * recordingDuration) 
@@ -154,46 +154,10 @@ def findAllSignalsInFM(sdr, recordingDuration):
             #rawAns.append( (round(frequencyLocation / 1e6) , rawAudioArr) )
             rawAns.append( (frequencyLocation, rawAudioArr) ) 
         sdr.center_freq += sdr.sample_rate - 200_000 #Traverses the next sample, with 200,000 hz of overlap to prevent ALL edge clipping
-        #sdr.center_freq += (sdr.sample_rate) #Traverses the next sample, with 200,000 hz of overlap to prevent ALL clipping
     ans = dict(removeDuplicateStations(rawAns)) # ans is just rawAns but with any possible duplicates filtered out
     print("Accepted signal count: " + str(len(ans)))
-    #ans = removeDuplicateStations(ans)
     return ans
              
-            
-
-""" Old version (just plays audio)
-def recordAudio(target, fileName):
-    phase_diff = np.angle(target[1:] * np.conj(target[:-1]))  #actually demodulates (data stored in frequency)
-    # --- Downsample to audio rate ---
-    audio = decimate(phase_diff, 6)        # 256 kHz → 48 kHz        (48khz )
-    # Normalize
-    audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
-    print("Recording audio...")
-    sd.play(audio, 42660)
-    sd.wait() 
-
-
-
-def findAllSignalsInFM(sdr, recordingDuration):
-    #strongSignalWidth = 106_000 # The width signal must be do be considered strong 
-    strongSignalWidth = 105_000 # The width signal must be do be considered strong 
-    for i in range(1,9): # we scan 8 times (1-8)
-        print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
-        samples = sdr.read_samples(sdr.sample_rate * recordingDuration) 
-        db = convertIQSamplesToDB(samples)
-        strongSignalThreshold = calcRelativeStrength(db) # defines what signal strength (in db) is considered strong
-        strongSignals = findStrongSignals(db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate) # finds strong signals within sample
-        for signal in strongSignals: # Plays all signals
-            frequencyLocation = convertRelativeFrequencyToActual(sdr.center_freq, signal)
-            print("Strong signal found at: " + (f"{frequencyLocation:.2e}"))
-            filtered = extractFromTargetCenter(samples, sdr, signal)
-            recordAudio(filtered, "test.wav") # TODO: WILL STORE RESULT IN ARRAY FORM
-        sdr.center_freq += sdr.sample_rate #Traverses the next sample
-"""
-
- 
-
 ###########################################################################
 def main():
     sample_rate = 2.56e6      # sample per second
@@ -203,11 +167,11 @@ def main():
     sdr = createSdrObj(sample_rate, center_freq, gain)  # create SDR object
 
     # Finding all strong signals
-    allDetectedSignals = findAllSignalsInFM(sdr, 5)
-    
-    # hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
-    #with open("signals.json", "w") as file: # This just automates file closing
-     #   json.dump(allDetectedSignals, file, indent = 2) #Writes dict to json
+    allDetectedSignals = findAllSignalsInFM(sdr, 1)
+    allDetectedSignals = dict(zip(allDetectedSignals.keys(), map(lambda x: x.tolist(), allDetectedSignals.values() )))
+    #hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
+    with open("signals.json", "w") as file: # This just automates file closing
+        json.dump(allDetectedSignals, file, indent = 2) #Writes dict to json
     #print("done!")
     sdr.close()
 

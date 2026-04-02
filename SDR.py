@@ -144,20 +144,19 @@ def findAllSignalsInFM(sdr, recordingDuration):
         strongSignalThreshold = calcRelativeStrength(db) # defines what signal strength (in db) is considered strong
         strongSignals = findStrongSignals(db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate) # finds strong signals within sample
         for signal in strongSignals: # Plays all signals
-            signal = round(signal, -5) # Stations are placed up to the tenths place of Mhz (like 101.1), so this makes sure we actually get the true center
-            frequencyLocation = convertRelativeFrequencyToActual(sdr.center_freq, signal)
-            print("Strong signal found at: " + (f"{frequencyLocation:.2e}"))
+            #signal = round(signal, -5) # Stations are placed up to the tenths place of Mhz (like 101.1), so this makes sure we actually get the true center
+            frequencyLocation = round ((convertRelativeFrequencyToActual(sdr.center_freq, signal))/1e6, 1)
+            print("Strong signal found at: " + str(frequencyLocation))
             #filtered = extractFromTargetCenter(samples, sdr, signal) 
-            filtered = extractFromTargetCenter(samples, sdr, signal)
+            filtered = extractFromTargetCenter(samples, sdr, round(signal, -5))
             rawAudioArr = formatSignalForAudio(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
-            print("Before: " + str(frequencyLocation) + "  After: " + str(frequencyLocation / 1e6), )
             #ans[round( (round(frequencyLocation, 5) / 1e6), 1) ] = rawAudioArr #returns the frequency in MHz (so 101 = 101e6)
             #rawAns.append( (round(frequencyLocation / 1e6) , rawAudioArr) )
-            rawAns.append( (frequencyLocation / 1e6 , rawAudioArr) ) 
+            rawAns.append( (frequencyLocation, rawAudioArr) ) 
         sdr.center_freq += sdr.sample_rate - 200_000 #Traverses the next sample, with 200,000 hz of overlap to prevent ALL edge clipping
         #sdr.center_freq += (sdr.sample_rate) #Traverses the next sample, with 200,000 hz of overlap to prevent ALL clipping
     ans = dict(removeDuplicateStations(rawAns)) # ans is just rawAns but with any possible duplicates filtered out
-    print("Accepted signal count: " + len(ans))
+    print("Accepted signal count: " + str(len(ans)))
     #ans = removeDuplicateStations(ans)
     return ans
              

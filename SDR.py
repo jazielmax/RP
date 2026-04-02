@@ -1,9 +1,8 @@
 import numpy as np
-import scipy.io.wavfile
+import json
+#import scipy.io.wavfile as wav
 from rtlsdr import RtlSdr
 from scipy.signal import decimate, firwin, lfilter
-#from scipy.io.wavfile import write 
-import matplotlib.pyplot as plt # used for pysdr example code
 import sounddevice as sd
 #TODO: centerI being returned from strong signal is literal outside of the possible scan range
 
@@ -118,25 +117,48 @@ def calcRelativeStrength(db):
     floorEstimate = np.average(np.percentile(db, 15)) # noise estimate, its the bottom 15% of signal strengths
     return floorEstimate + relativeThresholdVal
 
+def removeDuplicateStations(ans): #Center freq means no other centers should be at least 100,000 hz (or 0.1e6) or closer
+#note that the ans array should be pre-sorted from list to greatest, in Mhz for the center frequency
+    i = 0
+    while (i < len(ans) - 1):     # ans is an array of pairs, [#][0] references frequency, [#][1] references the array representation of the .wav audio
+        if(ans[i + 1][0] - ans[i][0] < 0.45): #If two signals are close enough, we infer they are duplicates (this is a rather cutthroat threshold, but our goal is 0 duplicates)
+            rmsI = np.sqrt(np.mean(ans[i][1] ** 2)) # root mean square is a way of comparing strength
+            rmsNext = np.sqrt(np.mean(ans[i + 1][1] ** 2))
+            if( rmsI > rmsNext): # Strongest signal is chosen (more likely to be the real signal, not a reflection of it)
+                ans.pop(i + 1)
+            else:
+                ans.pop(i)
+        else: # We dont +=1 just in case when popping, another weak signal is found
+            i+=1
+    return ans
+
 def findAllSignalsInFM(sdr, recordingDuration):
     ans = {}
-    #strongSignalWidth = 106_000 # The width signal must be do be considered strong 
-    strongSignalWidth = 107_000 # The width signal must be do be considered strong 
-    for i in range(1,9): # we scan 8 times (1-8)
+    rawAns = []
+    #strongSignalWidth = 107_000 # The width signal must be do be considered strong 
+    strongSignalWidth = 108_000 # The width signal must be do be considered strong 
+    for i in range(1,10): # we scan 8 times (1-8)
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
         samples = sdr.read_samples(sdr.sample_rate * recordingDuration) 
         db = convertIQSamplesToDB(samples)
         strongSignalThreshold = calcRelativeStrength(db) # defines what signal strength (in db) is considered strong
         strongSignals = findStrongSignals(db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate) # finds strong signals within sample
         for signal in strongSignals: # Plays all signals
+            signal = round(signal, -5) # Stations are placed up to the tenths place of Mhz (like 101.1), so this makes sure we actually get the true center
             frequencyLocation = convertRelativeFrequencyToActual(sdr.center_freq, signal)
             print("Strong signal found at: " + (f"{frequencyLocation:.2e}"))
+            #filtered = extractFromTargetCenter(samples, sdr, signal) 
             filtered = extractFromTargetCenter(samples, sdr, signal)
             rawAudioArr = formatSignalForAudio(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
-            print("Before: " + str(frequencyLocation) + "  After: " + str(round( (round(frequencyLocation, 5) / 1e6), 1)))
-            ans[round( (round(frequencyLocation, 5) / 1e6), 1) ] = rawAudioArr #returns the frequency in MHz (so 101 = 101e6)
+            print("Before: " + str(frequencyLocation) + "  After: " + str(frequencyLocation / 1e6), )
+            #ans[round( (round(frequencyLocation, 5) / 1e6), 1) ] = rawAudioArr #returns the frequency in MHz (so 101 = 101e6)
+            #rawAns.append( (round(frequencyLocation / 1e6) , rawAudioArr) )
+            rawAns.append( (frequencyLocation / 1e6 , rawAudioArr) ) 
         sdr.center_freq += sdr.sample_rate - 200_000 #Traverses the next sample, with 200,000 hz of overlap to prevent ALL edge clipping
         #sdr.center_freq += (sdr.sample_rate) #Traverses the next sample, with 200,000 hz of overlap to prevent ALL clipping
+    ans = dict(removeDuplicateStations(rawAns)) # ans is just rawAns but with any possible duplicates filtered out
+    print("Accepted signal count: " + len(ans))
+    #ans = removeDuplicateStations(ans)
     return ans
              
             
@@ -183,11 +205,17 @@ def main():
 
     # Finding all strong signals
     allDetectedSignals = findAllSignalsInFM(sdr, 5)
-    print("done!")
+    
+    # hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
+    #with open("signals.json", "w") as file: # This just automates file closing
+     #   json.dump(allDetectedSignals, file, indent = 2) #Writes dict to json
+    #print("done!")
     sdr.close()
 
 if __name__ == "__main__":
     main()
 
 
-#HUGE TODO: MERGE SCANS TOGETHER INTO ONE MEGA SCAN
+#HUGE TODO: Test overlap scan method's duplicate chance
+#TODO What to do for case of ghost signals? (They are duplicates, but actually located in a different areas), could impliment correlation maybe?
+#106.5 keeps on counting dupe

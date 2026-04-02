@@ -135,8 +135,8 @@ def removeDuplicateStations(ans): #Center freq means no other centers should be 
 def findAllSignalsInFM(sdr, recordingDuration):
     ans = {}
     rawAns = []
-    #strongSignalWidth = 108_000 # The width signal must be do be considered strong 
-    strongSignalWidth = 109_000 # The width signal must be do be considered strong 
+    #strongSignalWidth = 109_000 # The width signal must be do be considered strong 
+    strongSignalWidth = 150_000 # The width signal must be do be considered strong 
     for i in range(1,10): # we scan 8 times (1-8)
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
         samples = sdr.read_samples(sdr.sample_rate * recordingDuration) 
@@ -146,10 +146,11 @@ def findAllSignalsInFM(sdr, recordingDuration):
         for signal in strongSignals: # Plays all signals
             #signal = round(signal, -5) # Stations are placed up to the tenths place of Mhz (like 101.1), so this makes sure we actually get the true center
             frequencyLocation = round ((convertRelativeFrequencyToActual(sdr.center_freq, signal))/1e6, 1)
-            print("Strong signal found at: " + str(frequencyLocation))
+            
             #filtered = extractFromTargetCenter(samples, sdr, signal) 
             filtered = extractFromTargetCenter(samples, sdr, round(signal, -5))
             rawAudioArr = formatSignalForAudio(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
+            print("Strong signal found at: " + str(frequencyLocation) + " with RMS of: " + str(np.sqrt(np.mean(rawAudioArr ** 2))) )
             #ans[round( (round(frequencyLocation, 5) / 1e6), 1) ] = rawAudioArr #returns the frequency in MHz (so 101 = 101e6)
             #rawAns.append( (round(frequencyLocation / 1e6) , rawAudioArr) )
             rawAns.append( (frequencyLocation, rawAudioArr) ) 
@@ -167,7 +168,7 @@ def main():
     sdr = createSdrObj(sample_rate, center_freq, gain)  # create SDR object
 
     # Finding all strong signals
-    allDetectedSignals = findAllSignalsInFM(sdr, 1)
+    allDetectedSignals = findAllSignalsInFM(sdr, 2)
     allDetectedSignals = dict(zip(allDetectedSignals.keys(), map(lambda x: x.tolist(), allDetectedSignals.values() )))
     #hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
     with open("signals.json", "w") as file: # This just automates file closing

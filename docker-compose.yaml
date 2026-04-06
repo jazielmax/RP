@@ -1,0 +1,23 @@
+services:
+  db:
+    build:
+      context: ./docker/postgres
+    environment:
+      - POSTGRES_DB=dejavu
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    networks:
+      - db_network
+  python:
+    build:
+      context: ./docker/python
+    volumes:
+      - .:/code
+    depends_on:
+      - db
+    networks:
+      - db_network
+networks:
+  db_network:

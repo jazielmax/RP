@@ -1,9 +1,16 @@
 import numpy as np
 import json
-#import scipy.io.wavfile as wav
+from scipy.io.wavfile import write
 from rtlsdr import RtlSdr
 from scipy.signal import decimate, firwin, lfilter
 import sounddevice as sd
+from dejavu import Dejavu
+from dejavu.logic.recognizer.file_recognizer import FileRecognizer
+
+with open("dejavu.cnf.SAMPLE") as f:
+    config = json.load(f)
+
+djv = Dejavu(config)
 #TODO: centerI being returned from strong signal is literal outside of the possible scan range
 
 #NOTE: Signal detection should be done one chunk at a time, NOT: scan all, then process
@@ -150,6 +157,9 @@ def findAllSignalsInFM(sdr, recordingDuration):
             #filtered = extractFromTargetCenter(samples, sdr, signal) 
             filtered = extractFromTargetCenter(samples, sdr, round(signal, -5))
             rawAudioArr = formatSignalForAudio(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
+            result = recognize_audio_array(rawAudioArr)
+            print(result)
+
             print("Strong signal found at: " + str(frequencyLocation) + " with RMS of: " + str(np.sqrt(np.mean(rawAudioArr ** 2))) )
             #ans[round( (round(frequencyLocation, 5) / 1e6), 1) ] = rawAudioArr #returns the frequency in MHz (so 101 = 101e6)
             #rawAns.append( (round(frequencyLocation / 1e6) , rawAudioArr) )
@@ -158,6 +168,10 @@ def findAllSignalsInFM(sdr, recordingDuration):
     ans = dict(removeDuplicateStations(rawAns)) # ans is just rawAns but with any possible duplicates filtered out
     print("Accepted signal count: " + str(len(ans)))
     return ans
+
+def recognize_audio_array(audio, filename="temp.wav"):
+    write(filename, 42660, audio.astype(np.float32))
+    return djv.recognize(FileRecognizer, filename)
              
 ###########################################################################
 def main():
@@ -168,7 +182,7 @@ def main():
     sdr = createSdrObj(sample_rate, center_freq, gain)  # create SDR object
 
     # Finding all strong signals
-    allDetectedSignals = findAllSignalsInFM(sdr, 2)
+    allDetectedSignals = findAllSignalsInFM(sdr, 5)
     allDetectedSignals = dict(zip(allDetectedSignals.keys(), map(lambda x: x.tolist(), allDetectedSignals.values() )))
     #hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
     with open("signals.json", "w") as file: # This just automates file closing

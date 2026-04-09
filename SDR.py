@@ -1,7 +1,7 @@
 import numpy as np
 import json
 from scipy.io.wavfile import write
-from rtlsdr import RtlSdr
+from rtlsdr import RtlSdr, helpers
 from scipy.signal import decimate, firwin, lfilter
 import sounddevice as sd
 from dejavu import Dejavu
@@ -139,14 +139,45 @@ def removeDuplicateStations(ans): #Center freq means no other centers should be 
             i+=1
     return ans
 
+
+#Scan chunking is done to avoid buffer overflows for the transfer rate on the RTLSDR
+
+""" def chunkScan(sdr, recordingDuration):
+    chunks = [] # chunks is a list 
+    @helpers.limit_calls(recordingDuration)
+    def terminateCond(samples, context): # context is the sdr object by default
+        chunks.append(samples) 
+    sdr.read_samples_async(terminateCond, sdr.sample_rate * 1) # Reads in 1 second increments to prevent overflow and stores as chunk in chunks
+    return np.concatenate(chunks) # concatenates array into a ndarray, by default axis = 0, which means the 1st layer (The lists)
+ """
+
+def chunkScan(sdr, recordingDuration): # Aquired from user nocarryr https://github.com/pyrtlsdr/pyrtlsdr/issues/56 
+    N = int(sdr.sample_rate * recordingDuration)  # must be integer, would need to be checked for remainder (N += 1 if necessary) 
+    read_size = sdr.sample_rate
+    num_read = 0 # number of samples read
+    samples = None
+    while num_read <= N:
+        sweep = sdr.read_samples(read_size)
+        if samples is None:
+            samples = sweep
+        else:
+            #samples = np.concatenate((samples, sweep))
+            samples = np.concatenate((samples, sweep))
+        num_read += read_size
+    if samples.size > N:
+        samples = samples[:N]  # I think that slice expression is correct, would have to verify
+    return samples
+ 
 def findAllSignalsInFM(sdr, recordingDuration):
+    
     ans = {}
     rawAns = []
     #strongSignalWidth = 109_000 # The width signal must be do be considered strong 
     strongSignalWidth = 150_000 # The width signal must be do be considered strong 
     for i in range(1,10): # we scan 8 times (1-8)
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
-        samples = sdr.read_samples(sdr.sample_rate * recordingDuration) 
+        #samples = sdr.read_samples(sdr.sample_rate * recordingDuration)
+        samples = chunkScan(sdr, recordingDuration) 
         db = convertIQSamplesToDB(samples)
         strongSignalThreshold = calcRelativeStrength(db) # defines what signal strength (in db) is considered strong
         strongSignals = findStrongSignals(db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate) # finds strong signals within sample
@@ -175,7 +206,8 @@ def recognize_audio_array(audio, filename="temp.wav"):
              
 ###########################################################################
 def main():
-    sample_rate = 2.56e6      # sample per second
+    #sample_rate = 2.56e6      # sample per second
+    sample_rate = 2.048e6 # TEST E
     center_freq = 89e6 # exact starting point to guarantee the 8th scan will fully be in the FM band (not partially outside)
     #center_freq = 89.285e6 old val
     gain = 'auto'

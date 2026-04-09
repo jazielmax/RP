@@ -1,6 +1,14 @@
 dejavu
 ==========
 
+
+Note: WE CURRENTLY HAVE TWO SEPARATE CONTAINERS, RP_DB_1 AND RP_PYTHON_1
+# ADD PYTHON INSTALL TO DOCKER
+
+
+
+
+
 Audio fingerprinting and recognition algorithm implemented in Python, see the explanation here:  
 [How it works](http://willdrevo.com/fingerprinting-and-audio-recognition-with-python/)
 

@@ -15,9 +15,13 @@ services:
       context: ./docker/python
     volumes:
       - .:/code
+    working_dir: /code  # <---- Set working directory
+    devices:
+      - /dev/bus/usb:/dev/bus/usb  #<-- Uncomment once Udev is mplimented
     depends_on:
       - db
     networks:
       - db_network
+    #privileged: true
 networks:
   db_network:

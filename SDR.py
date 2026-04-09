@@ -6,6 +6,7 @@ from scipy.signal import decimate, firwin, lfilter
 import sounddevice as sd
 from dejavu import Dejavu
 from dejavu.logic.recognizer.file_recognizer import FileRecognizer
+import time
 
 with open("dejavu.cnf.SAMPLE") as f:
     config = json.load(f)
@@ -141,6 +142,12 @@ def removeDuplicateStations(ans): #Center freq means no other centers should be 
 
 
 #Scan chunking is done to avoid buffer overflows for the transfer rate on the RTLSDR
+def chunkScan(sdr, recordingDuration, rate):
+    AmountToRun = (int)((sdr.sample_rate * recordingDuration) / rate) # Note that the user should enter a value that divides the samplerate * recordingduration value (no float val)
+    chunks = [] # chunks is a list 
+    for i in range(0, AmountToRun):
+        chunks.append(sdr.read_samples(rate)) # Reads a very small amount at a time
+    return np.concatenate(chunks) # concatenates array into a ndarray, by default axis = 0, which means the 1st layer (The lists)
 
 """ def chunkScan(sdr, recordingDuration):
     chunks = [] # chunks is a list 
@@ -150,7 +157,7 @@ def removeDuplicateStations(ans): #Center freq means no other centers should be 
     sdr.read_samples_async(terminateCond, sdr.sample_rate * 1) # Reads in 1 second increments to prevent overflow and stores as chunk in chunks
     return np.concatenate(chunks) # concatenates array into a ndarray, by default axis = 0, which means the 1st layer (The lists)
  """
-
+""" 
 def chunkScan(sdr, recordingDuration): # Aquired from user nocarryr https://github.com/pyrtlsdr/pyrtlsdr/issues/56 
     N = int(sdr.sample_rate * recordingDuration)  # must be integer, would need to be checked for remainder (N += 1 if necessary) 
     read_size = sdr.sample_rate
@@ -167,7 +174,7 @@ def chunkScan(sdr, recordingDuration): # Aquired from user nocarryr https://gith
     if samples.size > N:
         samples = samples[:N]  # I think that slice expression is correct, would have to verify
     return samples
- 
+  """
 def findAllSignalsInFM(sdr, recordingDuration):
     
     ans = {}
@@ -177,7 +184,7 @@ def findAllSignalsInFM(sdr, recordingDuration):
     for i in range(1,10): # we scan 8 times (1-8)
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
         #samples = sdr.read_samples(sdr.sample_rate * recordingDuration)
-        samples = chunkScan(sdr, recordingDuration) 
+        samples = chunkScan(sdr, recordingDuration, 4000) 
         db = convertIQSamplesToDB(samples)
         strongSignalThreshold = calcRelativeStrength(db) # defines what signal strength (in db) is considered strong
         strongSignals = findStrongSignals(db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate) # finds strong signals within sample
@@ -196,6 +203,7 @@ def findAllSignalsInFM(sdr, recordingDuration):
             #rawAns.append( (round(frequencyLocation / 1e6) , rawAudioArr) )
             rawAns.append( (frequencyLocation, rawAudioArr) ) 
         sdr.center_freq += sdr.sample_rate - 200_000 #Traverses the next sample, with 200,000 hz of overlap to prevent ALL edge clipping
+        time.sleep(0.05) # NEW, 50 ms
     ans = dict(removeDuplicateStations(rawAns)) # ans is just rawAns but with any possible duplicates filtered out
     print("Accepted signal count: " + str(len(ans)))
     return ans
@@ -206,12 +214,13 @@ def recognize_audio_array(audio, filename="temp.wav"):
              
 ###########################################################################
 def main():
-    #sample_rate = 2.56e6      # sample per second
-    sample_rate = 2.048e6 # TEST E
+    sample_rate = 2.56e6      # sample per second
+    #sample_rate = 2.048e6 # TEST E
     center_freq = 89e6 # exact starting point to guarantee the 8th scan will fully be in the FM band (not partially outside)
     #center_freq = 89.285e6 old val
     gain = 'auto'
     sdr = createSdrObj(sample_rate, center_freq, gain)  # create SDR object
+    time.sleep(0.5) # NEW
 
     # Finding all strong signals
     allDetectedSignals = findAllSignalsInFM(sdr, 5)

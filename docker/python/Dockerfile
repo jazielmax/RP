@@ -21,16 +21,11 @@ RUN apt-get update -y && apt-get upgrade -y && \
     postgresql-contrib \
     && rm -rf /var/lib/apt/lists/*
 
-#ENV PYTHONDONTWRITEBYTECODE=1
-#ENV PYTHONUNBUFFERED=1
-
 RUN pip install --upgrade pip setuptools wheel
 
 # Install pyrtlsdr WITH its bundled librtlsdr
 RUN pip install numpy scipy matplotlib pydub pyaudio psycopg2-binary sounddevice
 RUN pip install pyrtlsdr[lib]
-
-ENV RTLSDR_ZEROCOPY=0
 
 WORKDIR /code
 COPY . /code

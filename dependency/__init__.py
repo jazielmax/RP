@@ -56,7 +56,6 @@ else:
     from .librtlsdr import librtlsdr
     from .rtlsdr import RtlSdr
     from .rtlsdrtcp import RtlSdrTcpServer, RtlSdrTcpClient
-    from .helpers import limit_calls, limit_time
     from .rtlsdraio import RtlSdrAio, AIO_AVAILABLE
 
 if AIO_AVAILABLE:

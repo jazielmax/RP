@@ -182,8 +182,8 @@ def findAllSignalsInFM(sdr, recordingDuration):
              
 ###########################################################################
 def main():
-    #sample_rate = 2.56e6      # sample per second
-    sample_rate = 2.048e6      # sample per second
+    sample_rate = 2.56e6      # sample per second
+    #sample_rate = 2.048e6      # sample per second
     center_freq = 89e6 # exact starting point to guarantee the 8th scan will fully be in the FM band (not partially outside)
     #center_freq = 89.285e6 old val
     gain = 'auto'

@@ -4,8 +4,8 @@ FROM python:3.9-slim
 RUN apt-get update -y && apt-get upgrade -y && \
     apt-get install -y \
     ## pulseaudio is for WSL ONLY
-    pulseaudio \
-    pulseaudio-utils \
+    #pulseaudio \
+    #pulseaudio-utils \
     build-essential \
     cmake \
     git \

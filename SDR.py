@@ -4,11 +4,20 @@ import json
 from rtlsdr import RtlSdr
 from scipy.signal import decimate, firwin, lfilter
 import sounddevice as sd
+from dejavu import Dejavu
+from dejavu.logic.recognizer.file_recognizer import FileRecognizer
+from scipy.io.wavfile import write
 #TODO: centerI being returned from strong signal is literal outside of the possible scan range
 
 #NOTE: Signal detection should be done one chunk at a time, NOT: scan all, then process
 # NOTE: Power peaks may not denote a strong signal, as they can be short lived, it is also necessary to measure the width of the signal, as it should be close to the bandwidth of FM radio (200,000hz)
+with open("dejavu.cnf.SAMPLE") as f:
+    config = json.load(f)
+djv = Dejavu(config)
 
+def recognize_audio_array(audio, filename="temp.wav"):
+    write(filename, 42660, audio.astype(np.float32))
+    return djv.recognize(FileRecognizer, filename) 
 
 
 #JSON with key frequency, store wav file straight in this
@@ -101,8 +110,9 @@ def formatSignalForAudio(target):
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
 
-    #sd.play(audio, 42660)
-    #sd.wait()
+    recognize_audio_array(audio)
+    sd.play(audio, 42660)
+    sd.wait()
     return audio 
 
     #TODO: Store np.array into JSON file, key is frequency of center (possibly store full result in array first for analysis)

@@ -11,21 +11,26 @@ services:
     networks:
       - db_network
   python:
+    #environment:
+      #- PULSE_SERVER=unix:/mnt/wslg/PulseServer # for WSLg REMOVE WHEN NOT USING WSL
     build:
       context: ./docker/python
     volumes:
       - .:/code
       - /dev/bus/usb:/dev/bus/usb 
+      #- /mnt/wslg/:/mnt/wslg/ # wslg is for audio (WSL ONLY!)
     working_dir: /code  # <---- Set working directory
     devices:
-      - /dev/bus/usb:/dev/bus/usb  
+      - /dev/bus/usb:/dev/bus/usb # For rtlsdr
+      - /dev/snd:/dev/snd  # for output
     depends_on:
       - db
     networks:
       - db_network
+    group_add:
+      - audio
     ulimits:
       memlock: -1
       rtprio: 99
-    #privileged: true
 networks:
   db_network:

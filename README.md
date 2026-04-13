@@ -25,6 +25,9 @@ First, install [Docker](https://docs.docker.com/get-docker/).
 $ docker-compose build
 $ docker-compose up -d
 
+OR docker compose run --rm python bash
+
+
 # get a shell inside the container
 $ docker-compose run python /bin/bash
 Starting dejavu_db_1 ... done

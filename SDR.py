@@ -101,8 +101,8 @@ def formatSignalForAudio(target):
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
 
-    #sd.play(audio, 42660)
-    #sd.wait()
+    sd.play(audio, 42660)
+    sd.wait()
     return audio 
 
     #TODO: Store np.array into JSON file, key is frequency of center (possibly store full result in array first for analysis)
@@ -155,7 +155,7 @@ def findAllSignalsInFM(sdr, recordingDuration):
     strongSignalWidth = 150_000 # The width signal must be do be considered strong 
     for i in range(1,10): # we scan 8 times (1-8)
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
-        samples = chunkScan(sdr, recordingDuration, sdr.sample_rate/4) # implements behavior of scanning signal, but in chunks for preventing buffer overflow 
+        samples = chunkScan(sdr, recordingDuration, sdr.sample_rate/2) # implements behavior of scanning signal, but in chunks for preventing buffer overflow 
         #samples = sdr.read_samples(sdr.sample_rate * recordingDuration)
         db = convertIQSamplesToDB(samples)
         strongSignalThreshold = calcRelativeStrength(db) # defines what signal strength (in db) is considered strong

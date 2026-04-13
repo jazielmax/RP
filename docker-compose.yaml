@@ -11,11 +11,14 @@ services:
     networks:
       - db_network
   python:
+    environment:
+      - PULSE_SERVER=unix:/mnt/wslg/PulseServer # for WSLg REMOVE WHEN NOT USING WSL
     build:
       context: ./docker/python
     volumes:
       - .:/code
       - /dev/bus/usb:/dev/bus/usb 
+      - /mnt/wslg/:/mnt/wslg/ # wslg is for audio (WSL ONLY!)
     working_dir: /code  # <---- Set working directory
     devices:
       - /dev/bus/usb:/dev/bus/usb  

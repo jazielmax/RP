@@ -13,6 +13,9 @@ RUN apt-get update -y && apt-get upgrade -y && \
     libusb-1.0-0-dev \
     gcc \
     ffmpeg \
+    libusb-1.0-0-dev \
+    librtlsdr-dev \
+    rtl-sdr \
     libasound-dev \
     portaudio19-dev \
     libportaudio2 \
@@ -21,11 +24,11 @@ RUN apt-get update -y && apt-get upgrade -y && \
     postgresql-contrib \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip setuptools wheel
+RUN python -m pip install --no-cache-dir --upgrade pip && \
+    python -m pip install --no-cache-dir setuptools wheel
 
 # Install pyrtlsdr WITH its bundled librtlsdr
 RUN pip install numpy scipy matplotlib pydub pyaudio psycopg2-binary sounddevice
-RUN pip install pyrtlsdr[lib]
 
 WORKDIR /code
 COPY . /code

@@ -8,9 +8,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Build latest RTL-SDR
-RUN git clone https://github.com/osmocom/rtl-sdr.git /rtl-sdr && \
-    cd /rtl-sdr && mkdir build && cd build && \
-    cmake .. && make -j4 && make install && ldconfig
+RUN git clone https://github.com/librtlsdr/librtlsdr.git /rtl && \
+    cd /rtl && mkdir build && cd build && \
+    cmake .. && \
+    make -j4 && \
+    make install && \
+    ldconfig
 
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 

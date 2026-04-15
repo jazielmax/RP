@@ -1,11 +1,7 @@
 FROM python:3.9-slim
 
-# Install ONLY what's needed for your application (no librtlsdr system packages)
 RUN apt-get update -y && apt-get upgrade -y && \
     apt-get install -y \
-    ## pulseaudio is for WSL ONLY
-    #pulseaudio \
-    #pulseaudio-utils \
     build-essential \
     cmake \
     git \
@@ -13,7 +9,6 @@ RUN apt-get update -y && apt-get upgrade -y && \
     libusb-1.0-0-dev \
     gcc \
     ffmpeg \
-    libusb-1.0-0-dev \
     librtlsdr-dev \
     rtl-sdr \
     libasound-dev \
@@ -24,12 +19,11 @@ RUN apt-get update -y && apt-get upgrade -y && \
     postgresql-contrib \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python -m pip install --no-cache-dir --upgrade pip && \
-    python -m pip install --no-cache-dir setuptools wheel
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install pyrtlsdr WITH its bundled librtlsdr
-RUN pip install numpy scipy matplotlib pydub pyaudio psycopg2-binary sounddevice
+RUN python -m pip install --no-cache-dir \
+    numpy scipy matplotlib pydub pyaudio \
+    psycopg2-binary sounddevice pyrtlsdr
 
 WORKDIR /code
 COPY . /code
-

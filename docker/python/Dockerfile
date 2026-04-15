@@ -1,23 +1,16 @@
 FROM python:3.9-slim
 
-RUN apt-get update -y && apt-get upgrade -y && \
-    apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    pkg-config \
-    libusb-1.0-0-dev \
-    gcc \
-    ffmpeg \
-    librtlsdr-dev \
-    rtl-sdr \
-    libasound-dev \
-    portaudio19-dev \
-    libportaudio2 \
-    libportaudiocpp0 \
-    postgresql \
-    postgresql-contrib \
+RUN apt-get update && apt-get install -y \
+    git cmake build-essential libusb-1.0-0-dev pkg-config \
+    ffmpeg gcc \
+    libasound-dev portaudio19-dev libportaudio2 libportaudiocpp0 \
+    postgresql postgresql-contrib \
     && rm -rf /var/lib/apt/lists/*
+
+# Build latest RTL-SDR
+RUN git clone https://github.com/osmocom/rtl-sdr.git /rtl-sdr && \
+    cd /rtl-sdr && mkdir build && cd build && \
+    cmake .. && make -j4 && make install && ldconfig
 
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 

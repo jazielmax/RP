@@ -19,7 +19,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
 RUN python -m pip install --no-cache-dir \
     numpy scipy matplotlib pydub pyaudio \
-    psycopg2-binary sounddevice pyrtlsdr
+    psycopg2-binary sounddevice pyrtlsdr yt-dlp
 
 WORKDIR /code
 COPY . /code

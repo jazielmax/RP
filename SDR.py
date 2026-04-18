@@ -202,7 +202,7 @@ def main():
         # Finding all strong signals
         allDetectedSignals = findAllSignalsInFM(sdr, 5)
         """     
-        allDetectedSignals = dict(zip(allDetectedSignals.keys(), map(lambda x: x.tolist(), allDetectedSignals.values() )))
+        allDetectedSignals = dict(zip(allDetectedSignals.keys(), map(lambda x: x.tolist(), allDetectedSignals.values() ))) # Currentl only allows frequency keys, nparray values (due to .toList())
         
         #hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
         with open("songs.json", "w") as file: # This just automates file closing
@@ -210,7 +210,7 @@ def main():
             
         """
         scanDuration = time.time() - startTime
-        time.sleep(runTime - scanDuration)
+        time.sleep(max(0,(runTime - scanDuration)))
     sdr.close() # do 3 minute
 
 if __name__ == "__main__":

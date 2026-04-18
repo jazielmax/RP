@@ -30,3 +30,4 @@ RUN pip install pyrtlsdr[lib]
 WORKDIR /code
 COPY . /code
 
+

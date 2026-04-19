@@ -1,6 +1,4 @@
 import numpy as np
-from rtlsdr import RtlSdr
-from scipy.signal import decimate, firwin, lfilter
 import json
 #import scipy.io.wavfile as wav
 from rtlsdr import RtlSdr
@@ -9,15 +7,16 @@ import sounddevice as sd
 from dejavu import Dejavu
 from dejavu.logic.recognizer.file_recognizer import FileRecognizer
 from scipy.io.wavfile import write
+import time
 #TODO: centerI being returned from strong signal is literal outside of the possible scan range
-   
+
 #NOTE: Signal detection should be done one chunk at a time, NOT: scan all, then process
 # NOTE: Power peaks may not denote a strong signal, as they can be short lived, it is also necessary to measure the width of the signal, as it should be close to the bandwidth of FM radio (200,000hz)
 with open("dejavu.cnf.SAMPLE") as f:
     config = json.load(f)
 djv = Dejavu(config)
 
-def recognize_audio_array(audio, filename="temp.wav"):
+def recognizeAsWav(audio, filename="temp.wav"):
     write(filename, 42660, audio.astype(np.float32))
     return djv.recognize(FileRecognizer, filename) 
 
@@ -53,20 +52,8 @@ def getSignalAttributes(i, representationOfFrequencies, threshholdForSignal): # 
         i+=1
     #NOTE: The maxI value that is returned is stored as a relative frequency, as it it states how far away it is from the central frequency. This must be converted (though the convertRelativeFrequencyToActual) in order for it to be useful
     return (maxI, i - startI, i + 1000) # maxI = center, i-startI = width, i = end. DECIDE WHETHER OR NOT TO KEEP + 1000
->>>>>>> docker_database
 
-#fingerprinting
-#audio -> time vs frequency (currently in amplitude v time) use short time fourier transform
-#find STRONG frequency peaks (you'll have coordinate points of peaks)
-#pair peaks together (don't store individual peaks, pair them together)
-#hash those pairs
-#store hashes in database (non relational database is KING (sqlite for local storage though))
 
-<<<<<<< HEAD
-#bad news have to build own hash database
-#so essentially we have to create the hashes and store them
-#which means we need LEGALLY OBTAIN music and create a script to hash them and store it into our cute database
-=======
 
 #MOST LIKELY LINUX ERROR CASE
 def findStrongSignals(representationOfFrequencies: np.ndarray, threshholdForSignal, thresholdForWidth, sample_rate): # Given a frequency domain sample already set for power, returns the frequencies where the center of strong signals are
@@ -117,18 +104,16 @@ def lowPassExtract(samples, sdr): # Retrieves the signal at central frequency
     taps = firwin(tapSize, cutoff / nyq) # Creates the filter (FIR). Cut off is the width of the signal, we normalize by diving by the nyquist  
     return decimate( lfilter(taps, 1.0, samples), 10 ) #Uses the filter to cut out the target signal from the sample array
 
-def formatSignalForAudio(target):
+def runRecognize(target):
     phase_diff = np.angle(target[1:] * np.conj(target[:-1]))  #actually demodulates (data stored in frequency)
     # --- Downsample to audio rate ---
     audio = decimate(phase_diff, 6)        # 256 kHz → 48 kHz        (48khz )
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
-
-    result = recognize_audio_array(audio)
-    print(result)
+    
     #sd.play(audio, 42660)
     #sd.wait()
-    return audio 
+    return recognizeAsWav(audio)  
 
     #TODO: Store np.array into JSON file, key is frequency of center (possibly store full result in array first for analysis)
 
@@ -149,7 +134,7 @@ def removeDuplicateStations(ans): #Center freq means no other centers should be 
 #note that the ans array should be pre-sorted from list to greatest, in Mhz for the center frequency
     i = 0
     while (i < len(ans) - 1):     # ans is an array of pairs, [#][0] references frequency, [#][1] references the array representation of the .wav audio
-        if(ans[i + 1][0] - ans[i][0] < 0.45): #If two signals are close enough, we infer they are duplicates (this is a rather cutthroat threshold, but our goal is 0 duplicates)
+        if(ans[i + 1][0] - ans[i][0] < 0.45): #If two signals are close enough in their central frequency, we infer they are duplicates (this is a rather cutthroat threshold, but our goal is 0 duplicates)
             rmsI = np.sqrt(np.mean(ans[i][1] ** 2)) # root mean square is a way of comparing strength
             rmsNext = np.sqrt(np.mean(ans[i + 1][1] ** 2))
             if( rmsI > rmsNext): # Strongest signal is chosen (more likely to be the real signal, not a reflection of it)
@@ -174,7 +159,7 @@ def chunkScan(sdr, recordingDuration, rate): # TEST ONE, DELETE
 
 
 def findAllSignalsInFM(sdr, recordingDuration):
-    ans = {}
+    ans = [] # this will hold dictionaries within the list
     rawAns = []
     #strongSignalWidth = 109_000 # The width signal must be do be considered strong 
     strongSignalWidth = 150_000 # The width signal must be do be considered strong 
@@ -188,46 +173,71 @@ def findAllSignalsInFM(sdr, recordingDuration):
         for signal in strongSignals: # Plays all signals
             #signal = round(signal, -5) # Stations are placed up to the tenths place of Mhz (like 101.1), so this makes sure we actually get the true center
             frequencyLocation = round ((convertRelativeFrequencyToActual(sdr.center_freq, signal))/1e6, 1)
-            
-
-            ##SOMEWHERE HERE IS ISSUE
-            #filtered = extractFromTargetCenter(samples, sdr, signal) 
             filtered = extractFromTargetCenter(samples, sdr, round(signal, -5))
-            rawAudioArr = formatSignalForAudio(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
 
+            """ recognizeResult = runRecognize(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
+            if(len(recognizeResult["results"]) > 0):
+                filteredRecognizeResult = recognizeResult["results"][0] # Takes out all the useless info we aren't using (runtime, query time, etc..). This assumes that results will have ONE dict that contains all the key:value pairs for attributes (but idk yet how its supposed to be)
+            else: # Case of fingerprinting not finding anything
+                filteredRecognizeResult = dict()
+                filteredRecognizeResult["title"] = ""
+                filteredRecognizeResult["artist"] = ""
+                filteredRecognizeResult["genre"] = ""
+                filteredRecognizeResult["year"] = ""
+            filteredRecognizeResult["station"] = (str(frequencyLocation) + " FM")
+            print(filteredRecognizeResult) """
 
-            print("Strong signal found at: " + str(frequencyLocation) + " with RMS of: " + str(np.sqrt(np.mean(rawAudioArr ** 2))) )
-            #ans[round( (round(frequencyLocation, 5) / 1e6), 1) ] = rawAudioArr #returns the frequency in MHz (so 101 = 101e6)
-            #rawAns.append( (round(frequencyLocation / 1e6) , rawAudioArr) )
-            rawAns.append( (frequencyLocation, rawAudioArr) ) 
+            print("Strong signal found at: " + str(frequencyLocation) )
+            rawAns.append( (frequencyLocation, filtered) ) # PLACEHOLDER VALUE
+
         sdr.center_freq += sdr.sample_rate - 200_000 #Traverses the next sample, with 200,000 hz of overlap to prevent ALL edge clipping
-    ans = dict(removeDuplicateStations(rawAns)) # ans is just rawAns but with any possible duplicates filtered out
+    rawAns = removeDuplicateStations(rawAns) # removes dupes before running dejavu
+    for i in range(0, len(rawAns)):
+        filtered = rawAns[i][1] # 2nd element in tuple is the filtered val
+        recognizeResult = runRecognize(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
+        if(len(recognizeResult["results"]) > 0):
+            filteredRecognizeResult = recognizeResult["results"][0] # Takes out all the useless info we aren't using (runtime, query time, etc..). This assumes that results will have ONE dict that contains all the key:value pairs for attributes (but idk yet how its supposed to be)
+        else: # Case of fingerprinting not finding anything
+            filteredRecognizeResult = dict()
+            filteredRecognizeResult["title"] = ""
+            filteredRecognizeResult["artist"] = ""
+            filteredRecognizeResult["genre"] = ""
+            filteredRecognizeResult["year"] = ""
+        filteredRecognizeResult["station"] = (str(rawAns[i][0]) + " FM")
+        print(filteredRecognizeResult)
+        ans.append(filteredRecognizeResult)
+
+
+    #_, _, ans = zip(*rawAns) # ans is just rawAns but with any possible duplicates filtered out. * is useda s the unpacking operator, _ is wildcard (as in disregard it). This is VERY ocaml coded
+    #ans = list(ans) # formats to a list of dict's that follows the desired format for out frontend
     print("Accepted signal count: " + str(len(ans)))
     return ans
              
 ###########################################################################
 def main():
-    sample_rate = 2.56e6      # sample per second
-    #sample_rate = 2.048e6      # sample per second
-    center_freq = 89e6 # exact starting point to guarantee the 8th scan will fully be in the FM band (not partially outside)
-    #center_freq = 89.285e6 old val
-    gain = 'auto'
-    sdr = createSdrObj(sample_rate, center_freq, gain)  # create SDR object
+    sdr = RtlSdr()  # create SDR object
+    sdr.gain = 'auto'
+    sdr.sample_rate = 2.56e6      # sample per second
+    runTime = 180
+    while(True):     
+        startTime = time.time()
+        sdr.center_freq = 89e6 # exact starting point to guarantee the 8th scan will fully be in the FM band (not partially outside)
+        # Finding all strong signals
+        allDetectedSignals = findAllSignalsInFM(sdr, 5)
 
-    # Finding all strong signals
-    allDetectedSignals = findAllSignalsInFM(sdr, 5)
-    allDetectedSignals = dict(zip(allDetectedSignals.keys(), map(lambda x: x.tolist(), allDetectedSignals.values() )))
-    #hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
-    with open("signals.json", "w") as file: # This just automates file closing
-        json.dump(allDetectedSignals, file, indent = 2) #Writes dict to json
-    #print("done!")
-    sdr.close()
+        #hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
+        with open("songs.json", "w") as file: # This just automates file closing
+            json.dump(allDetectedSignals, file, indent=1) #Writes dict to json 
+
+        scanDuration = time.time() - startTime
+        time.sleep(max(0,(runTime - scanDuration)))
+    sdr.close() # do 3 minute
 
 if __name__ == "__main__":
     main()
 
 
-#HUGE TODO: Test overlap scan method's duplicate chance
-#TODO What to do for case of ghost signals? (They are duplicates, but actually located in a different areas), could impliment correlation maybe?
-#106.5 keeps on counting dupe
->>>>>>> docker_database
+
+
+
+

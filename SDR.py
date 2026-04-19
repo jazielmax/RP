@@ -159,7 +159,7 @@ def chunkScan(sdr, recordingDuration, rate): # TEST ONE, DELETE
 
 
 def findAllSignalsInFM(sdr, recordingDuration):
-    ans = {}
+    ans = [] # this will hold dictionaries within the list
     rawAns = []
     #strongSignalWidth = 109_000 # The width signal must be do be considered strong 
     strongSignalWidth = 150_000 # The width signal must be do be considered strong 
@@ -175,23 +175,41 @@ def findAllSignalsInFM(sdr, recordingDuration):
             frequencyLocation = round ((convertRelativeFrequencyToActual(sdr.center_freq, signal))/1e6, 1)
             filtered = extractFromTargetCenter(samples, sdr, round(signal, -5))
 
-            recognizeResult = runRecognize(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
+            """ recognizeResult = runRecognize(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
             if(len(recognizeResult["results"]) > 0):
                 filteredRecognizeResult = recognizeResult["results"][0] # Takes out all the useless info we aren't using (runtime, query time, etc..). This assumes that results will have ONE dict that contains all the key:value pairs for attributes (but idk yet how its supposed to be)
-            else:
+            else: # Case of fingerprinting not finding anything
                 filteredRecognizeResult = dict()
+                filteredRecognizeResult["title"] = ""
+                filteredRecognizeResult["artist"] = ""
+                filteredRecognizeResult["genre"] = ""
+                filteredRecognizeResult["year"] = ""
             filteredRecognizeResult["station"] = (str(frequencyLocation) + " FM")
-            print(filteredRecognizeResult)
-
+            print(filteredRecognizeResult) """
 
             print("Strong signal found at: " + str(frequencyLocation) )
-            #ans[round( (round(frequencyLocation, 5) / 1e6), 1) ] = rawAudioArr #returns the frequency in MHz (so 101 = 101e6)
-            #rawAns.append( (round(frequencyLocation / 1e6) , rawAudioArr) )
-            rawAns.append( (frequencyLocation, filteredRecognizeResult) ) # PLACEHOLDER VALUE
+            rawAns.append( (frequencyLocation, filtered) ) # PLACEHOLDER VALUE
+
         sdr.center_freq += sdr.sample_rate - 200_000 #Traverses the next sample, with 200,000 hz of overlap to prevent ALL edge clipping
-    
-    _, ans = zip(*rawAns) # ans is just rawAns but with any possible duplicates filtered out. * is useda s the unpacking operator, _ is wildcard (as in disregard it). This is VERY ocaml coded
-    ans = list(ans) # formats to a list of dict's that follows the desired format for out frontend
+    rawAns = removeDuplicateStations(rawAns) # removes dupes before running dejavu
+    for i in range(0, len(rawAns)):
+        filtered = rawAns[i][1] # 2nd element in tuple is the filtered val
+        recognizeResult = runRecognize(filtered) # TODO: WILL STORE RESULT IN ARRAY FORM
+        if(len(recognizeResult["results"]) > 0):
+            filteredRecognizeResult = recognizeResult["results"][0] # Takes out all the useless info we aren't using (runtime, query time, etc..). This assumes that results will have ONE dict that contains all the key:value pairs for attributes (but idk yet how its supposed to be)
+        else: # Case of fingerprinting not finding anything
+            filteredRecognizeResult = dict()
+            filteredRecognizeResult["title"] = ""
+            filteredRecognizeResult["artist"] = ""
+            filteredRecognizeResult["genre"] = ""
+            filteredRecognizeResult["year"] = ""
+        filteredRecognizeResult["station"] = (str(rawAns[i][0]) + " FM")
+        print(filteredRecognizeResult)
+        ans.append(filteredRecognizeResult)
+
+
+    #_, _, ans = zip(*rawAns) # ans is just rawAns but with any possible duplicates filtered out. * is useda s the unpacking operator, _ is wildcard (as in disregard it). This is VERY ocaml coded
+    #ans = list(ans) # formats to a list of dict's that follows the desired format for out frontend
     print("Accepted signal count: " + str(len(ans)))
     return ans
              
@@ -209,18 +227,8 @@ def main():
 
         #hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
         with open("songs.json", "w") as file: # This just automates file closing
-            json.dump(allDetectedSignals, file, indent = 1) #Writes dict to json 
+            json.dump(allDetectedSignals, file, indent=1) #Writes dict to json 
 
-        
-            
-        """     
-        allDetectedSignals = dict(zip(allDetectedSignals.keys(), map(lambda x: x.tolist(), allDetectedSignals.values() ))) # Currentl only allows frequency keys, nparray values (due to .toList())
-        
-        #hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
-        with open("songs.json", "w") as file: # This just automates file closing
-            json.dump(allDetectedSignals, file, indent = 2) #Writes dict to json 
-            
-        """
         scanDuration = time.time() - startTime
         time.sleep(max(0,(runTime - scanDuration)))
     sdr.close() # do 3 minute

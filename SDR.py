@@ -199,10 +199,10 @@ def findAllSignalsInFM(sdr, recordingDuration):
             filteredRecognizeResult = recognizeResult["results"][0] # Takes out all the useless info we aren't using (runtime, query time, etc..). This assumes that results will have ONE dict that contains all the key:value pairs for attributes (but idk yet how its supposed to be)
         else: # Case of fingerprinting not finding anything
             filteredRecognizeResult = dict()
-            filteredRecognizeResult["title"] = ""
-            filteredRecognizeResult["artist"] = ""
-            filteredRecognizeResult["genre"] = ""
-            filteredRecognizeResult["year"] = ""
+            filteredRecognizeResult["title"] = None
+            filteredRecognizeResult["artist"] = None
+            filteredRecognizeResult["genre"] = None
+            filteredRecognizeResult["year"] = None
         filteredRecognizeResult["station"] = (str(rawAns[i][0]) + " FM")
         print(filteredRecognizeResult)
         ans.append(filteredRecognizeResult)
@@ -226,7 +226,7 @@ def main():
         allDetectedSignals = findAllSignalsInFM(sdr, 5)
 
         #hashcodeSignals(allDetectedSignals) # will automatically update database with the detected songs
-        with open("songs.json", "w") as file: # This just automates file closing
+        with open("/code/ddb_prototype/songs.json", "w") as file: # This just automates file closing
             json.dump(allDetectedSignals, file, indent=1) #Writes dict to json 
 
         scanDuration = time.time() - startTime

@@ -46,6 +46,11 @@ class FrontEnd(QMainWindow):
                 self.timer.timeout.connect(self.update_time)
                 self.timer.start(1000)
 
+                # create timer to auto refresh song data every 3 minutes
+                self.refresh_timer = QTimer(self)
+                self.refresh_timer.timeout.connect(self.auto_refresh_song_data)
+                self.refresh_timer.start(185000)
+
                 # access table for displaying data, make it read only, and rezise to fit screen
                 table = self.ui.dashboard_table
                 table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -139,6 +144,72 @@ class FrontEnd(QMainWindow):
                 return super().eventFilter(source, event)
 
         ###########################################################################################
+        # function name - filters_are_active(self)
+        # parameters - self, the application itself
+        # returns true if any filter dropdown currently has a selection
+        ###########################################################################################
+        def filters_are_active(self):
+                selected_genre = self.ui.genre_cmb.currentText().strip()
+                selected_start_year = self.ui.year_cmb_1.currentText().strip()
+                selected_end_year = self.ui.year_cmb_2.currentText().strip()
+
+                return selected_genre != "" or selected_start_year != "" or selected_end_year != ""
+
+        ###########################################################################################
+        # function name - start_refresh_timer(self)
+        # parameters - self, the application itself
+        # starts or restarts the 3 minute auto refresh timer
+        ###########################################################################################
+        def start_refresh_timer(self):
+                self.refresh_timer.start(185000)
+
+        ###########################################################################################
+        # function name - stop_refresh_timer(self)
+        # parameters - self, the application itself
+        # stops the auto refresh timer while filters are being used
+        ###########################################################################################
+        def stop_refresh_timer(self):
+                self.refresh_timer.stop()
+
+        ###########################################################################################
+        # function name - reload_filter_options(self)
+        # parameters - self, the application itself
+        # reloads the dropdown choices based on the newest song data while keeping blank selected
+        ###########################################################################################
+        def reload_filter_options(self):
+                self.ui.genre_cmb.blockSignals(True)
+                self.ui.year_cmb_1.blockSignals(True)
+                self.ui.year_cmb_2.blockSignals(True)
+
+                self.populate_combo_box(self.ui.genre_cmb, 2)
+                self.populate_combo_box(self.ui.year_cmb_1, 3)
+                self.populate_combo_box(self.ui.year_cmb_2, 3)
+
+                self.ui.genre_cmb.setCurrentIndex(0)
+                self.ui.year_cmb_1.setCurrentIndex(0)
+                self.ui.year_cmb_2.setCurrentIndex(0)
+
+                self.ui.genre_cmb.blockSignals(False)
+                self.ui.year_cmb_1.blockSignals(False)
+                self.ui.year_cmb_2.blockSignals(False)
+
+        ###########################################################################################
+        # function name - auto_refresh_song_data(self)
+        # parameters - self, the application itself
+        # refreshes song data automatically only when no filters are active
+        ###########################################################################################
+        def auto_refresh_song_data(self):
+                if self.filters_are_active():
+                        self.stop_refresh_timer()
+                        return
+
+                self.all_data = self.load_song_data("songs.json")
+                self.load_table_data(self.all_data)
+                self.reload_filter_options()
+
+                self.ui.resetfilter_btn.setVisible(False)
+
+        ###########################################################################################
         # function name - load_song_data(self, filename)
         # parameters - self, the application itself
         #            - filename, the json file containing scanned song information
@@ -179,12 +250,12 @@ class FrontEnd(QMainWindow):
         def reload_song_data(self):
                 self.all_data = self.load_song_data("songs.json")
                 self.load_table_data(self.all_data)
-
-                self.populate_combo_box(self.ui.genre_cmb, 2)
-                self.populate_combo_box(self.ui.year_cmb_1, 3)
-                self.populate_combo_box(self.ui.year_cmb_2, 3)
+                self.reload_filter_options()
 
                 self.ui.resetfilter_btn.setVisible(False)
+
+                # restart the 3 minute refresh timer after manual refresh
+                self.start_refresh_timer()
 
         ###########################################################################################
         # function name - load_table_data(self, data)
@@ -238,8 +309,17 @@ class FrontEnd(QMainWindow):
                 # check if any filters are in use, if so show reset button, otherwise hide it
                 if selected_genre != "" or selected_start_year != "" or selected_end_year != "":
                         self.ui.resetfilter_btn.setVisible(True)
+                        self.stop_refresh_timer()
                 else:
                         self.ui.resetfilter_btn.setVisible(False)
+
+                        # reload newest song data when all filters are cleared
+                        self.all_data = self.load_song_data("songs.json")
+                        self.load_table_data(self.all_data)
+                        self.reload_filter_options()
+
+                        self.start_refresh_timer()
+                        return
 
                 filtered_data = []
 
@@ -287,17 +367,23 @@ class FrontEnd(QMainWindow):
         ###########################################################################################
         # function name - reset_filters(self)
         # parameters - self, the application itself
-        # resets all filter combo boxes back to empty and reloads full table data
+        # resets all filter combo boxes back to empty, reloads song data, and reloads full table
         ###########################################################################################
         def reset_filters(self):
-                self.ui.genre_cmb.setCurrentIndex(0)
-                self.ui.year_cmb_1.setCurrentIndex(0)
-                self.ui.year_cmb_2.setCurrentIndex(0)
+                # reload newest song data when filters are cleared
+                self.all_data = self.load_song_data("songs.json")
+
+                # update combo boxes to match newest data and clear selections
+                self.reload_filter_options()
 
                 # hide reset button again after filters are cleared
                 self.ui.resetfilter_btn.setVisible(False)
 
+                # reload full table with newest data
                 self.load_table_data(self.all_data)
+
+                # restart auto refresh once filters are cleared
+                self.start_refresh_timer()
 
         ###########################################################################################
         # function name - update_time

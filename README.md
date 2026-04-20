@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 dejavu
 ==========
 
@@ -340,3 +341,16 @@ wav | 1885
 fingerprints | 377
 
 There's a pretty direct trade-off between the necessary record time and the amount of storage needed. Adjusting the amplitude threshold for peaks and the fan value for fingerprinting will add more fingerprints and bolster the accuracy at the expense of more space. 
+=======
+The files included in this repository are required for the frontend of this project.
+
+In order to open the project, follow these steps:
+    - install qt creator
+    - open the software
+    - press ctrl + o on your keyboard
+        - Alternatively:
+            - click "file" in the top left
+            - click "open file or project"
+    - find the folder with these files
+    - open the .toml file
+>>>>>>> origin/Frontend_qt

@@ -169,21 +169,21 @@ def convertRelativeFrequencyToActual(centralFreq, offset): # Given the location 
 ############################################################################
 #Returns the peak of a signal and its width
 def getSignalAttributes(i, representationOfFrequencies, threshholdForSignal): # Given the starting loation of a signal, traverses the signal till it finds the peak. I will return the end of the signal, so we make sure to not count the same signal twice
-    guardStart = 80 
+    guardStart = 100 
     guard = guardStart
     startI = i
     max = -100 #Because I'm using personally using decibels, negative values are possible, so the starting value is -100 db 
     maxI = -1
     sampleLength = len(representationOfFrequencies)
     while True: 
+        if i >= sampleLength or guard <= 0: 
+            i-=1 #Sort of pointless, but If here, it means the i before it was the last frequency of signal
+            break 
         currYVal = representationOfFrequencies[i]
         if currYVal < threshholdForSignal: 
             guard-=1
         else:
             guard = guardStart
-        if i >= sampleLength or guard <= 0: 
-            i-=1 #Sort of pointless, but If here, it means the i before it was the last frequency of signal
-            break 
         if currYVal > max: # Keeping track of where peak is
             max = currYVal 
             maxI = i 
@@ -292,8 +292,8 @@ def findAllSignalsInFM(sdr, recordingDuration):
         strongSignalThreshold = calcRelativeAcceptedStrength(db) 
         strongSignals = findStrongSignals(db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate) 
         for signal in strongSignals: 
-            frequencyLocation = round ((convertRelativeFrequencyToActual(sdr.center_freq, signal))/1e6, 1)
-            filtered = extractFromTargetCenter(samples, sdr, signal)
+            frequencyLocation = round((convertRelativeFrequencyToActual(sdr.center_freq, signal))/1e6, 1)
+            filtered = extractFromTargetCenter(samples, sdr, round(signal,6))
             print("Strong signal found at: " + str(frequencyLocation) )
             snr = calcSNR(filtered, frequencyDom) # Aquires the signal to noise ratio of given signal
             rawAns.append( (frequencyLocation, filtered, snr) ) 

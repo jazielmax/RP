@@ -18,6 +18,9 @@ class PostgreSQLDatabase(CommonDatabase):
         CREATE TABLE IF NOT EXISTS "{SONGS_TABLENAME}" (
             "{FIELD_SONG_ID}" SERIAL
         ,   "{FIELD_SONGNAME}" VARCHAR(250) NOT NULL
+        ,   "artist" VARCHAR(250)
+        ,   "genre" VARCHAR(100)
+        ,   "year" INT
         ,   "{FIELD_FINGERPRINTED}" SMALLINT DEFAULT 0
         ,   "{FIELD_FILE_SHA1}" BYTEA
         ,   "{FIELD_TOTAL_HASHES}" INT NOT NULL DEFAULT 0
@@ -82,6 +85,9 @@ class PostgreSQLDatabase(CommonDatabase):
     SELECT_SONG = f"""
         SELECT
             "{FIELD_SONGNAME}"
+        ,   "artist"
+        ,   "genre"
+        ,   "year"
         ,   upper(encode("{FIELD_FILE_SHA1}", 'hex')) AS "{FIELD_FILE_SHA1}"
         ,   "{FIELD_TOTAL_HASHES}"
         FROM "{SONGS_TABLENAME}"
@@ -100,6 +106,9 @@ class PostgreSQLDatabase(CommonDatabase):
         SELECT
             "{FIELD_SONG_ID}"
         ,   "{FIELD_SONGNAME}"
+        ,   "artist"
+        ,   "genre"
+        ,   "year"
         ,   upper(encode("{FIELD_FILE_SHA1}", 'hex')) AS "{FIELD_FILE_SHA1}"
         ,   "{FIELD_TOTAL_HASHES}"
         ,   "date_created"
@@ -116,6 +125,16 @@ class PostgreSQLDatabase(CommonDatabase):
         UPDATE "{SONGS_TABLENAME}" SET
             "{FIELD_FINGERPRINTED}" = 1
         ,   "date_modified" = now()
+        WHERE "{FIELD_SONG_ID}" = %s;
+    """
+
+    UPDATE_SONG_METADATA = f"""
+        UPDATE "{SONGS_TABLENAME}"
+        SET
+            "artist" = %s,
+            "genre" = %s,
+            "year" = %s,
+            "date_modified" = now()
         WHERE "{FIELD_SONG_ID}" = %s;
     """
 
@@ -154,6 +173,13 @@ class PostgreSQLDatabase(CommonDatabase):
         with self.cursor() as cur:
             cur.execute(self.INSERT_SONG, (song_name, file_hash, total_hashes))
             return cur.fetchone()[0]
+        
+    def update_song_metadata(self, song_id, artist=None, genre=None, year=None):
+        with self.cursor() as cur:
+            cur.execute(
+                self.UPDATE_SONG_METADATA,
+                (artist, genre, year, song_id)
+            )
 
     def __getstate__(self):
         return self._options,
@@ -168,6 +194,8 @@ def cursor_factory(**factory_options):
         options.update(factory_options)
         return Cursor(**options)
     return cursor
+
+
 
 
 class Cursor(object):

@@ -42,14 +42,20 @@ class PostgreSQLDatabase(CommonDatabase):
         ,   CONSTRAINT "fk_{FINGERPRINTS_TABLENAME}_{FIELD_SONG_ID}" FOREIGN KEY ("{FIELD_SONG_ID}")
                 REFERENCES "{SONGS_TABLENAME}"("{FIELD_SONG_ID}") ON DELETE CASCADE
         );
-
-        CREATE INDEX IF NOT EXISTS "ix_{FINGERPRINTS_TABLENAME}_{FIELD_HASH}" ON "{FINGERPRINTS_TABLENAME}"
-        USING hash ("{FIELD_HASH}");
     """
 
+    # Only define the index ONCE - remove CONCURRENTLY (not allowed in transaction)
     CREATE_FINGERPRINTS_TABLE_INDEX = f"""
-        CREATE INDEX "ix_{FINGERPRINTS_TABLENAME}_{FIELD_HASH}" ON "{FINGERPRINTS_TABLENAME}"
-        USING hash ("{FIELD_HASH}");
+        CREATE INDEX IF NOT EXISTS "ix_{FINGERPRINTS_TABLENAME}_{FIELD_HASH}" 
+        ON "{FINGERPRINTS_TABLENAME}" 
+        USING btree ("{FIELD_HASH}");
+    """
+
+    # If you need CONCURRENTLY, run this separately after table creation
+    CREATE_INDEX_CONCURRENTLY = f"""
+        CREATE INDEX CONCURRENTLY IF NOT EXISTS "ix_{FINGERPRINTS_TABLENAME}_{FIELD_HASH}" 
+        ON "{FINGERPRINTS_TABLENAME}" 
+        USING btree ("{FIELD_HASH}");
     """
 
     # INSERTS (IGNORES DUPLICATES)

@@ -6,5 +6,10 @@
         "password": "password",
         "database": "dejavu"
     },
-    "database_type": "postgres"
+    "database_type": "postgres",
+    "fingerprint_limit": 120,
+    "fingerprint_threshold": 0,
+    "minimum_match_score": 800,
+    "top_n": 3,
+    "silence_threshold": 0.05
 }

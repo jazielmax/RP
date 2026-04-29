@@ -7,9 +7,17 @@ from dejavu import Dejavu
 from dejavu.logic.recognizer.file_recognizer import FileRecognizer
 from scipy.io.wavfile import write
 import time
+from fastapi import FastAPI, Request
+from sse_starlette.sse import EventSourceResponse
+from datetime import datetime
 with open("dejavu.cnf.SAMPLE") as f:
     config = json.load(f)
 djv = Dejavu(config)
+
+app = FastAPI()
+
+client_connection = None
+latest_results = []
 
 
 ############################ Basic signal I/O: #############################
@@ -279,6 +287,84 @@ def findAllSignalsInFM(sdr, recordingDuration):
     ans = removeDuplicateStations(rawAns)
     print("Accepted signal count: " + str(len(ans)))
     return ans
+###########################################################################
+@app.get("/stream")
+async def stream_updates(request: Request):
+    """Single client connects here"""
+    global client_connection
+    
+    # Create a queue just for this single client
+    queue = asyncio.Queue()
+    client_connection = queue
+    
+    async def event_generator():
+        try:
+            # Send initial results if available
+            if latest_results:
+                yield {
+                    "event": "update",
+                    "data": json.dumps({
+                        "timestamp": datetime.now().isoformat(),
+                        "count": len(latest_results),
+                        "results": latest_results
+                    })
+                }
+            
+            # Keep connection open and wait for data
+            while True:
+                if await request.is_disconnected():
+                    break
+                
+                try:
+                    # Wait for new data from POST endpoint
+                    data = await queue.get()
+                    yield {
+                        "event": "update",
+                        "data": data
+                    }
+                except:
+                    continue
+                    
+        finally:
+            global client_connection
+            if client_connection == queue:
+                client_connection = None
+
+    return EventSourceResponse(event_generator())
+
+@app.post("/recognize")
+async def recognize_signals(signals_data: dict):
+    """Receive signals, process, and push to the single connected client"""
+    global latest_results
+    
+    signals = signals_data.get("signals", [])
+    
+    if not signals:
+        return {"status": "error", "message": "No signals provided"}
+    
+    # Process signals
+    results = recognizeAllSignals(signals)
+    
+    # Save to file
+    with open("/code/ddb_prototype/songs.json", "w") as file:
+        json.dump(results, file, indent=1)
+    
+    # Update latest results
+    latest_results = results
+    
+    # Push to client if connected
+    if client_connection:
+        await client_connection.put(json.dumps({
+            "timestamp": datetime.now().isoformat(),
+            "count": len(results),
+            "results": results
+        }))
+    
+    return {
+        "status": "complete",
+        "connected": client_connection is not None,
+        "count": len(results)
+    }
              
 ###########################################################################
 def main():

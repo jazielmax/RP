@@ -19,7 +19,8 @@ RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
 RUN python -m pip install --no-cache-dir \
     numpy scipy matplotlib pydub pyaudio \
-    psycopg2-binary sounddevice pyrtlsdr yt-dlp mutagen
+    psycopg2-binary sounddevice pyrtlsdr mutagen fastapi \
+    uvicorn sse-starlette
 
 WORKDIR /code
 COPY . /code

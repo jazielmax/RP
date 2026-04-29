@@ -202,7 +202,7 @@ def getSignalAttributes(i, representationOfFrequencies, threshholdForSignal): # 
 #
 ############################################################################
 def calcRelativeAcceptedStrength(db):
-    relativeThresholdVal = 23
+    relativeThresholdVal = 18.5
     floorEstimateDb = np.average(np.percentile(db, 15)) 
     return floorEstimateDb + relativeThresholdVal
 
@@ -281,7 +281,7 @@ def findStrongSignals(representationOfFrequencies: np.ndarray, threshholdForSign
 def findAllSignalsInFM(sdr, recordingDuration):
 
     rawAns = []
-    strongSignalWidth = 135_000 
+    strongSignalWidth = 180_000 
     for i in range(1,10): 
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
         # Scans in chunks to prevent usb buffer overflow 

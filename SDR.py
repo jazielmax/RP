@@ -293,7 +293,7 @@ def findAllSignalsInFM(sdr, recordingDuration):
         strongSignals = findStrongSignals(db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate) 
         for signal in strongSignals: 
             frequencyLocation = round ((convertRelativeFrequencyToActual(sdr.center_freq, signal))/1e6, 1)
-            filtered = extractFromTargetCenter(samples, sdr, round(signal, -5))
+            filtered = extractFromTargetCenter(samples, sdr, signal)
             print("Strong signal found at: " + str(frequencyLocation) )
             snr = calcSNR(filtered, frequencyDom) # Aquires the signal to noise ratio of given signal
             rawAns.append( (frequencyLocation, filtered, snr) ) 

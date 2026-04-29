@@ -7,30 +7,41 @@ from dejavu import Dejavu
 from dejavu.logic.recognizer.file_recognizer import FileRecognizer
 from scipy.io.wavfile import write
 import time
-from fastapi import FastAPI, Request
-from sse_starlette.sse import EventSourceResponse
-from datetime import datetime
 with open("dejavu.cnf.SAMPLE") as f:
     config = json.load(f)
 djv = Dejavu(config)
 
-app = FastAPI()
-
-client_connection = None
-latest_results = []
-
 
 ############################ Basic signal I/O: #############################
+
+
+############################################################################
+#
+# Name:        calcSNR
+# Description: Calculates the signal to noise ratio of a passed signal.
+# Parameters:  ndarray singleStationIQSample - The IQ representation (time domain) of scanned signal
+#              double frequencyDomSamples - In frequency domain, the samples of the entire scan, used to determine the noise floor power (not db)
+# Return Value: double - The SNR (signal to noise) ratio
+#
+############################################################################
+def calcSNR(singleStationIQSample, frequencyDomSamples): 
+    signal_pow = np.mean(np.abs(singleStationIQSample) ** 2)
+    noise_pow = np.percentile(np.abs(frequencyDomSamples)**2, 15) / len(frequencyDomSamples)
+    return  10 * np.log10(signal_pow / noise_pow) 
+ 
+
+
+
 
 ############################################################################
 #
 # Name:        extractFromTargetCenter
 # Description: Extracts a single FM signal from an existing scan in its IQ representation, via shifting the target to the center
-# Parameters:  darray samples - The IQ representation (time domain) of scanned radio samples
+# Parameters:  ndarray samples - The IQ representation (time domain) of scanned radio samples
 #              RtlSdr sdr - The SDR object used for scanning (1 only)
 #              relativeCenterFrequency - The location of the target we want to rotate to the center 
 #              relative to the current center frequency  (as in the sdr's center frequency it used for the scan)
-# Return Value: d
+# Return Value: ndarray - The IQ representation of the FM signal (and only the signal)
 #
 ############################################################################
 def extractFromTargetCenter(samples, sdr, relativeCenterFreq):
@@ -46,14 +57,13 @@ def extractFromTargetCenter(samples, sdr, relativeCenterFreq):
 
 ############################################################################
 #
-# Name:        convertIQSamplesToDB
-# Description: Converts the time representation of radio sample data into decibels in frequency domain
-# Parameters:  ndarray samples - The IQ representation (time domain) of scanned radio samples
+# Name:        convertFrequencyDomSamplesToDB
+# Description: Converts the frequency representation of radio sample data into decibels in frequency domain
+# Parameters:  ndarray frequencyDom - The frequency domain representation of scanned radio samples
 # Return Value: ndarray - The decibel representation of the samples
 #
 ############################################################################
-def convertIQSamplesToDB(samples):
-    frequencyDom = np.fft.fftshift(np.fft.fft(samples))   # turns samples from time domain to frequency domain (what we want). 
+def convertFrequencyDomSamplesToDB(frequencyDom):
     powerFreqDom = np.abs(frequencyDom) ** 2
     return 10 * np.log10(powerFreqDom) # db representation
 
@@ -112,7 +122,7 @@ def runRecognize(sample):
 ############################################################################
 def recognizeAllSignals(signals):
     ans = []
-    for i in range(0, len(signals)):
+    for i in range(0, len(signals)): 
             filtered = signals[i][1] 
             recognizeResult = runRecognize(filtered) 
             if(len(recognizeResult["results"]) > 0):
@@ -124,6 +134,7 @@ def recognizeAllSignals(signals):
                 filteredRecognizeResult["genre"] = ""
                 filteredRecognizeResult["year"] = 0
             filteredRecognizeResult["station"] = (str(signals[i][0]) + " FM")
+            filteredRecognizeResult["strength"] = signals[i][2]
             print(filteredRecognizeResult)
             ans.append(filteredRecognizeResult)
     return ans
@@ -187,13 +198,13 @@ def getSignalAttributes(i, representationOfFrequencies, threshholdForSignal): # 
 # Description:  Using an estimate for the noise floor, determines what decibel strength 
 #               is considered a strong signal (the starting strength of a strong signal, as in its minimum strength)
 # Parameters:   ndarray db - The decibel representation of an entire scan's samples
-# Return Value: Float - The signal strength we consider the start of a strong signal 
+# Return Value: Float, float - The signal strength we consider the start of a strong signal , The very roughly estimated noise floor
 #
 ############################################################################
 def calcRelativeAcceptedStrength(db):
-    relativeThresholdVal = 25 
-    floorEstimate = np.average(np.percentile(db, 15)) 
-    return floorEstimate + relativeThresholdVal
+    relativeThresholdVal = 23
+    floorEstimateDb = np.average(np.percentile(db, 15)) 
+    return floorEstimateDb + relativeThresholdVal
 
 ############################################################################
 #
@@ -209,18 +220,19 @@ def calcRelativeAcceptedStrength(db):
 def removeDuplicateStations(ans): 
     i = 0
     while (i < len(ans) - 1):    
-        #We infer duplicate signals when close nough
-        if(ans[i + 1][0] - ans[i][0] < 0.45): 
+        if(ans[i + 1][0] - ans[i][0] < 0.35): 
             # root mean square is a way of comparing strength
-            rmsI = np.sqrt(np.mean(ans[i][1] ** 2)) 
-            rmsNext = np.sqrt(np.mean(ans[i + 1][1] ** 2))
+            rmsI = np.sqrt(np.mean(np.abs(ans[i][1]) ** 2)) 
+            rmsNext = np.sqrt(np.mean(np.abs(ans[i + 1][1]) ** 2))
             if( rmsI > rmsNext): 
                 ans.pop(i + 1)
+                i+=1
             else:
                 ans.pop(i)
         else: 
             i+=1
     return ans
+
 
 
 ############################################################################
@@ -269,12 +281,13 @@ def findStrongSignals(representationOfFrequencies: np.ndarray, threshholdForSign
 def findAllSignalsInFM(sdr, recordingDuration):
 
     rawAns = []
-    strongSignalWidth = 150_000 
+    strongSignalWidth = 135_000 
     for i in range(1,10): 
         print("CURRENT CENTER FREQ:" + str(sdr.center_freq))
         # Scans in chunks to prevent usb buffer overflow 
         samples = chunkScan(sdr, recordingDuration, sdr.sample_rate/4) 
-        db = convertIQSamplesToDB(samples)
+        frequencyDom = np.fft.fftshift(np.fft.fft(samples))   # turns samples from time domain to frequency domain (what we want). 
+        db = convertFrequencyDomSamplesToDB(frequencyDom)
         # determines what signal strength (in db) is considered strong
         strongSignalThreshold = calcRelativeAcceptedStrength(db) 
         strongSignals = findStrongSignals(db, strongSignalThreshold, strongSignalWidth, sdr.sample_rate) 
@@ -282,89 +295,12 @@ def findAllSignalsInFM(sdr, recordingDuration):
             frequencyLocation = round ((convertRelativeFrequencyToActual(sdr.center_freq, signal))/1e6, 1)
             filtered = extractFromTargetCenter(samples, sdr, round(signal, -5))
             print("Strong signal found at: " + str(frequencyLocation) )
-            rawAns.append( (frequencyLocation, filtered) ) 
+            snr = calcSNR(filtered, frequencyDom) # Aquires the signal to noise ratio of given signal
+            rawAns.append( (frequencyLocation, filtered, snr) ) 
         sdr.center_freq += sdr.sample_rate - 200_000 
     ans = removeDuplicateStations(rawAns)
     print("Accepted signal count: " + str(len(ans)))
     return ans
-###########################################################################
-@app.get("/stream")
-async def stream_updates(request: Request):
-    """Single client connects here"""
-    global client_connection
-    
-    # Create a queue just for this single client
-    queue = asyncio.Queue()
-    client_connection = queue
-    
-    async def event_generator():
-        try:
-            # Send initial results if available
-            if latest_results:
-                yield {
-                    "event": "update",
-                    "data": json.dumps({
-                        "timestamp": datetime.now().isoformat(),
-                        "count": len(latest_results),
-                        "results": latest_results
-                    })
-                }
-            
-            # Keep connection open and wait for data
-            while True:
-                if await request.is_disconnected():
-                    break
-                
-                try:
-                    # Wait for new data from POST endpoint
-                    data = await queue.get()
-                    yield {
-                        "event": "update",
-                        "data": data
-                    }
-                except:
-                    continue
-                    
-        finally:
-            global client_connection
-            if client_connection == queue:
-                client_connection = None
-
-    return EventSourceResponse(event_generator())
-
-@app.post("/recognize")
-async def recognize_signals(signals_data: dict):
-    """Receive signals, process, and push to the single connected client"""
-    global latest_results
-    
-    signals = signals_data.get("signals", [])
-    
-    if not signals:
-        return {"status": "error", "message": "No signals provided"}
-    
-    # Process signals
-    results = recognizeAllSignals(signals)
-    
-    # Save to file
-    with open("/code/ddb_prototype/songs.json", "w") as file:
-        json.dump(results, file, indent=1)
-    
-    # Update latest results
-    latest_results = results
-    
-    # Push to client if connected
-    if client_connection:
-        await client_connection.put(json.dumps({
-            "timestamp": datetime.now().isoformat(),
-            "count": len(results),
-            "results": results
-        }))
-    
-    return {
-        "status": "complete",
-        "connected": client_connection is not None,
-        "count": len(results)
-    }
              
 ###########################################################################
 def main():
@@ -383,6 +319,8 @@ def main():
             json.dump(allFingerPrintedSignals, file, indent=1)
 
         scanDuration = time.time() - startTime
+        allDetectedSignals.clear()
+        allFingerPrintedSignals.clear()
         time.sleep(max(0,(runTime - scanDuration)))
     # TODO:  When exit call recieved from frontend, close sdr object
     sdr.close() # do 3 minute

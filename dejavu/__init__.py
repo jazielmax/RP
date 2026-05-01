@@ -31,6 +31,7 @@ class Dejavu:
         # if we should limit seconds fingerprinted,
         # None|-1 means use entire track
         self.limit = self.config.get("fingerprint_limit", None)
+        print(f"Fingerprint limit: {self.limit}")               #DEBUGGING
         if self.limit == -1:  # for JSON compatibility
             self.limit = None
         self.__load_fingerprinted_audio_hashes()
@@ -118,7 +119,7 @@ class Dejavu:
         pool.close()
         pool.join()
 
-    def fingerprint_file(self, file_path: str, song_name: str = None) -> None:
+    def fingerprint_file(self, file_path: str, song_name: str = None) -> int:
         """
         Given a path to a file the method generates hashes for it and stores them in the database
         for later be queried.
@@ -132,6 +133,15 @@ class Dejavu:
         # don't refingerprint already fingerprinted files
         if song_hash in self.songhashes_set:
             print(f"{song_name} already fingerprinted, continuing...")
+            with self.db.cursor() as cur:
+                cur.execute("""
+                    SELECT song_id FROM songs
+                    WHERE file_sha1 = decode(%s, 'hex')
+                    ORDER BY date_created DESC
+                    LIMIT 1;
+                """, (song_hash,))
+                result = cur.fetchone()
+                return result[0] if result else None
         else:
             song_name, hashes, file_hash = Dejavu._fingerprint_worker(
                 file_path,
@@ -142,6 +152,8 @@ class Dejavu:
             self.db.insert_hashes(sid, hashes)
             self.db.set_song_fingerprinted(sid)
             self.__load_fingerprinted_audio_hashes()
+
+            return sid
 
     def generate_fingerprints(self, samples: List[int], Fs=DEFAULT_FS) -> Tuple[List[Tuple[str, int]], float]:
         f"""
@@ -233,7 +245,7 @@ class Dejavu:
         except ValueError:
             pass
 
-        song_name, extension = os.path.splitext(os.path.basename(file_name))
+        song_name, _ = os.path.splitext(os.path.basename(file_name))
 
         fingerprints, file_hash = Dejavu.get_file_fingerprints(file_name, limit, print_output=True)
 

@@ -7,6 +7,9 @@ from dejavu import Dejavu
 from dejavu.logic.recognizer.file_recognizer import FileRecognizer
 from scipy.io.wavfile import write
 import time
+import soundfile as sf
+import tempfile
+import os
 with open("dejavu.cnf.SAMPLE") as f:
     config = json.load(f)
 djv = Dejavu(config)
@@ -106,7 +109,16 @@ def runRecognize(sample):
     audio = decimate(phase_diff, 6)        
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
-    return djv.recognize(FileRecognizer, "temp.wav")
+    with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as tmp:
+        sf.write(tmp.name, audio.astype(np.float32), 48000, format='FLAC')
+    temp_path = tmp.name
+    try:
+        result = djv.recognize(FileRecognizer, temp_path)
+        return result
+    finally:
+        # Clean up temp file
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 ############################################################################
 #
@@ -122,21 +134,34 @@ def runRecognize(sample):
 ############################################################################
 def recognizeAllSignals(signals):
     ans = []
-    for i in range(0, len(signals)): 
-            filtered = signals[i][1] 
-            recognizeResult = runRecognize(filtered) 
-            if(len(recognizeResult["results"]) > 0):
-                filteredRecognizeResult = recognizeResult["results"][0] 
+    for i in range(0, len(signals)):
+        filtered = signals[i][1]
+        recognizeResult = runRecognize(filtered)
+        if len(recognizeResult.get("results", [])) > 0:
+            result = recognizeResult["results"][0]
+            full_name = result.get("song_name", b"").decode("utf-8") if isinstance(result.get("song_name"), bytes) else result.get("song_name", "")
+            # Split on " - " to separate title and artist
+            if " - " in full_name:
+                title, artist = full_name.split(" - ", 1)
             else:
-                filteredRecognizeResult = dict()
-                filteredRecognizeResult["title"] = ""
-                filteredRecognizeResult["artist"] = ""
-                filteredRecognizeResult["genre"] = ""
-                filteredRecognizeResult["year"] = 0
-            filteredRecognizeResult["station"] = (str(signals[i][0]) + " FM")
-            filteredRecognizeResult["strength"] = signals[i][2]
-            print(filteredRecognizeResult)
-            ans.append(filteredRecognizeResult)
+                title, artist = full_name, ""
+            filteredRecognizeResult = {
+                "title": title,
+                "artist": artist,
+                "genre": result.get("genre", ""),
+                "year": result.get("year", 0)
+            }
+        else:
+            filteredRecognizeResult = {
+                "title": "",
+                "artist": "",
+                "genre": "",
+                "year": 0
+            }
+        filteredRecognizeResult["station"] = f"{signals[i][0]} FM"
+        filteredRecognizeResult["strength"] = signals[i][2]
+        print(filteredRecognizeResult)
+        ans.append(filteredRecognizeResult)
     return ans
 
 ############################### FM detection ###############################

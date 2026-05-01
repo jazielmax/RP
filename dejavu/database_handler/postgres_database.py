@@ -1,5 +1,5 @@
 import queue
-
+import binascii
 import psycopg2
 from psycopg2.extras import DictCursor
 
@@ -81,7 +81,7 @@ class PostgreSQLDatabase(CommonDatabase):
     """
 
     SELECT_MULTIPLE = f"""
-        SELECT upper(encode("{FIELD_HASH}", 'hex')), "{FIELD_SONG_ID}", "{FIELD_OFFSET}"
+        SELECT "{FIELD_HASH}", "{FIELD_SONG_ID}", "{FIELD_OFFSET}"
         FROM "{FINGERPRINTS_TABLENAME}"
         WHERE "{FIELD_HASH}" IN (%s);
     """
@@ -194,12 +194,58 @@ class PostgreSQLDatabase(CommonDatabase):
         self._options, = state
         self.cursor = cursor_factory(**self._options)
 
+    def return_matches(self, hashes, batch_size=1000):
+        """
+        Override to handle PostgreSQL's bytea output correctly.
+        """
+
+
+        # Build mapper: uppercase hex string -> list of input offsets
+        mapper = {}
+        for hsh, offset in hashes:
+            hsh_upper = hsh.upper()
+            mapper.setdefault(hsh_upper, []).append(offset)
+
+        values = list(mapper.keys())
+        dedup_hashes = {}
+        results = []
+
+        with self.cursor() as cur:
+            for idx in range(0, len(values), batch_size):
+                batch = values[idx:idx + batch_size]
+                # Create placeholders: decode(%s, 'hex') for each hash
+                placeholders = ', '.join(['decode(%s, \'hex\')'] * len(batch))
+                query = f"""
+                    SELECT "{FIELD_HASH}", "{FIELD_SONG_ID}", "{FIELD_OFFSET}"
+                    FROM "{FINGERPRINTS_TABLENAME}"
+                    WHERE "{FIELD_HASH}" IN ({placeholders})
+                """
+                cur.execute(query, batch)
+
+                for hash_bytes, sid, offset in cur:
+                    # Convert memoryview/bytes to uppercase hex string
+                    if isinstance(hash_bytes, memoryview):
+                        hash_hex = binascii.hexlify(hash_bytes).decode('utf-8').upper()
+                    else:
+                        hash_hex = hash_bytes.hex().upper()
+
+                    # Count unique hashes per song
+                    dedup_hashes[sid] = dedup_hashes.get(sid, 0) + 1
+
+                    # For each input offset that matches this hash, add a result
+                    for sampled_offset in mapper[hash_hex]:
+                        results.append((sid, offset - sampled_offset))
+
+        return results, dedup_hashes
+
 
 def cursor_factory(**factory_options):
     def cursor(**options):
         options.update(factory_options)
         return Cursor(**options)
     return cursor
+
+    
 
 
 
@@ -212,15 +258,10 @@ class Cursor(object):
         cur.execute(query)
         ...
     """
+    _cache = queue.Queue(maxsize=5) 
     def __init__(self, dictionary=False, **options):
-        super().__init__()
-
-        self._cache = queue.Queue(maxsize=5)
-
         try:
             conn = self._cache.get_nowait()
-            # Ping the connection before using it from the cache.
-            conn.ping(True)
         except queue.Empty:
             conn = psycopg2.connect(**options)
 
@@ -239,14 +280,13 @@ class Cursor(object):
         return self.cursor
 
     def __exit__(self, extype, exvalue, traceback):
-        # if we had a PostgreSQL related error we try to rollback the cursor.
-        if extype is psycopg2.DatabaseError:
-            self.cursor.rollback()
+        if extype and issubclass(extype, psycopg2.DatabaseError):
+            self.conn.rollback()
+        else:
+            self.conn.commit()
 
         self.cursor.close()
-        self.conn.commit()
 
-        # Put it back on the queue
         try:
             self._cache.put_nowait(self.conn)
         except queue.Full:

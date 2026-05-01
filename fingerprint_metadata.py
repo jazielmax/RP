@@ -1,82 +1,68 @@
 import sys
 import os
+import json
 from dejavu import Dejavu
 from mutagen.flac import FLAC
+from mutagen.easyid3 import EasyID3
 
 if len(sys.argv) < 2:
-    print("Usage: python fingerprint.py <dir>")
+    print("Usage: python fingerprint_metadata.py <dir>")
     sys.exit(1)
 
 MUSIC_DIR = sys.argv[1]
 
-config = {
-    "database_type": "postgres",
-    "database": {
-        "host": "db",
-        "user": "postgres",
-        "password": "password",
-        "database": "dejavu"
-     }
-}
+with open("dejavu.cnf.SAMPLE") as f:
+    config = json.load(f)
 
 def get_audio_files(directory):
     files = []
     for root, _, filenames in os.walk(directory):
         for f in filenames:
-            if f.lower().endswith(".flac"):
+            if f.lower().endswith((".flac", ".mp3")):
                 files.append(os.path.join(root, f))
     return files
 
 def extract_metadata(file_path):
     try:
-        audio = FLAC(file_path)
-
-        artist = audio.get("artist", [None])[0]
-        genre = audio.get("genre", [None])[0]
-
-        date = audio.get("date", [None])[0]
-        year = int(date[:4]) if date else None
-
+        if file_path.lower().endswith(".flac"):
+            audio = FLAC(file_path)
+            artist = audio.get("artist", [None])[0]
+            genre = audio.get("genre", [None])[0]
+            date = audio.get("date", [None])[0]
+        elif file_path.lower().endswith(".mp3"):
+            audio = EasyID3(file_path)
+            artist = audio.get("artist", [None])[0]
+            genre = audio.get("genre", [None])[0]
+            date = audio.get("date", [None])[0]
+        else:
+            return None, None, None
+        
+        year = None
+        if date:
+            try:
+                year = int(date[:4])
+            except:
+                pass
         return artist, genre, year
-
+        
     except Exception as e:
         print(f"Metadata error: {file_path} -> {e}")
         return None, None, None
-
-def get_last_song_id(djv):
-    with djv.db.cursor() as cur:
-        cur.execute("""
-            SELECT song_id
-            FROM songs
-            ORDER BY song_id DESC
-            LIMIT 1;
-        """)
-        return cur.fetchone()[0]
 
 def fingerprint_files(djv, files):
     for file in files:
         try:
             print(f"Fingerprinting: {file}")
-
-            # Step 1: fingerprint (inserts song)
-            djv.fingerprint_file(file)
-
-            # Step 2: get inserted song_id
-            song_id = get_last_song_id(djv)
-
-            # Step 3: extract metadata
-            artist, genre, year = extract_metadata(file)
-
-            # Step 4: update DB
-            djv.db.update_song_metadata(
-                song_id,
-                artist=artist,
-                genre=genre,
-                year=year
-            )
-
-            print(f"Updated metadata for song_id={song_id}")
-
+            
+            song_id = djv.fingerprint_file(file)
+            
+            if song_id:
+                artist, genre, year = extract_metadata(file)
+                djv.db.update_song_metadata(song_id, artist=artist, genre=genre, year=year)
+                print(f"Updated metadata for song_id={song_id}: {artist}, {genre}, {year}")
+            else:
+                print(f"Warning: Could not get song_id for {file}")
+                
         except Exception as e:
             print(f"Failed: {file} -> {e}")
 
@@ -86,17 +72,17 @@ def main():
         sys.exit(1)
 
     audio_files = get_audio_files(MUSIC_DIR)
-
+    
     if not audio_files:
-        print("No .flac files found")
+        print("No audio files found (.flac, .mp3)")
         return
-
-    print(f"Found {len(audio_files)} FLAC files")
-
+    
+    print(f"Found {len(audio_files)} audio files")
+    
     djv = Dejavu(config)
-
+    print(f"Fingerprint limit is set to: {djv.limit}")
     fingerprint_files(djv, audio_files)
-
+    
     print("Done fingerprinting")
 
 if __name__ == "__main__":

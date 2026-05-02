@@ -109,8 +109,11 @@ def runRecognize(sample):
     audio = decimate(phase_diff, 6)        
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
+    #actual_rate = original_rate // 6   # 256000 / 6 = 42666.66...
+    
+        
     with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as tmp:
-        sf.write(tmp.name, audio.astype(np.float32), 48000, format='FLAC')
+        sf.write(tmp.name, audio.astype(np.float32), 48000, format='FLAC')  ##sf.write(tmp.name, audio.astype(np.float32), int(actual_rate), format='FLAC')  
     temp_path = tmp.name
     try:
         result = djv.recognize(FileRecognizer, temp_path)
@@ -283,7 +286,7 @@ def findStrongSignals(representationOfFrequencies: np.ndarray, threshholdForSign
         if(representationOfFrequencies[i] >= threshholdForSignal):
             centerI, width, i = getSignalAttributes(i, representationOfFrequencies, threshholdForSignal) # i gets set to the end of the signal
             if width >= thresholdForWidth:
-                offset = (centerI - sampleLength/2) * (sample_rate / sampleLength) # Essentially an inverses the FFT + FFTshift
+                offset = (cent  erI - sampleLength/2) * (sample_rate / sampleLength) # Essentially an inverses the FFT + FFTshift
                 #ans.append(convertRelativeFrequencyToActual(centralFreq, centerI)) # consider some form of floor or ceiling? Most signals are like 101.1e6, so we only need
                 ans.append(offset) # TESTING VERSION FOR SEEING IF IT WORKS
         else:

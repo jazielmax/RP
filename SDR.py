@@ -286,7 +286,7 @@ def findStrongSignals(representationOfFrequencies: np.ndarray, threshholdForSign
         if(representationOfFrequencies[i] >= threshholdForSignal):
             centerI, width, i = getSignalAttributes(i, representationOfFrequencies, threshholdForSignal) # i gets set to the end of the signal
             if width >= thresholdForWidth:
-                offset = (cent  erI - sampleLength/2) * (sample_rate / sampleLength) # Essentially an inverses the FFT + FFTshift
+                offset = (centerI - sampleLength/2) * (sample_rate / sampleLength) # Essentially an inverses the FFT + FFTshift
                 #ans.append(convertRelativeFrequencyToActual(centralFreq, centerI)) # consider some form of floor or ceiling? Most signals are like 101.1e6, so we only need
                 ans.append(offset) # TESTING VERSION FOR SEEING IF IT WORKS
         else:

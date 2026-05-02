@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg gcc \
     libasound-dev portaudio19-dev libportaudio2 libportaudiocpp0 \
     postgresql postgresql-contrib \
+    libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Build latest RTL-SDR

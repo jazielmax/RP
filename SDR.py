@@ -134,7 +134,7 @@ def runRecognize(sample):
         if result.get("results") and len(result["results"]) > 0:
             try:
                 conn = psycopg2.connect(
-                    host="localhost",
+                    host="rp-db-1",
                     database="dejavu",
                     user="postgres",
                     password="password"

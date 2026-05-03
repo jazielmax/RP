@@ -10,6 +10,8 @@ import time
 import soundfile as sf
 import tempfile
 import os
+import psycopg2
+
 with open("dejavu.cnf.SAMPLE") as f:
     config = json.load(f)
 djv = Dejavu(config)
@@ -109,16 +111,44 @@ def runRecognize(sample):
     audio = decimate(phase_diff, 6)        
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
-    actual_rate = original_rate // 6   # 256000 / 6 = 42666.66...
     print("[DEBUG] normalized")
     
         
     with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as tmp:
-        sf.write(tmp.name, audio.astype(np.float32), int(actual_rate), format='FLAC')  
+        sf.write(tmp.name, audio.astype(np.float32), 48000, format='FLAC')  
     temp_path = tmp.name
     print(f"[DEBUG] temp file created: {temp_path}")
     try:
         result = djv.recognize(FileRecognizer, temp_path)
+        if result.get("results") and len(result["results"]) > 0:
+            try:
+                conn = psycopg2.connect(
+                    host="localhost",
+                    database="dejavu",
+                    user="postgres",
+                    password="password"
+                )
+                cur = conn.cursor()
+
+                for match in result["results"]:
+                    song_id = match.get("song_id")
+                    if song_id:
+                        cur.execute(
+                            "SELECT genre, year, artist FROM songs WHERE song_id = %s",
+                            (song_id,)
+                        )
+                        db_result = cur.fetchone()
+                        if db_result:
+                            match["genre"] = db_result[0] or ""
+                            match["year"] = db_result[1] or 0
+                            match["artist"] = db_result[2] or ""
+            
+                cur.close()
+                conn.close()
+
+            except Exception as e:
+                print(f"[WARNING] Could not connect to database: {e}")
+
         print(f"[DEBUG] recognize returned: {result}")
         return result
     finally:

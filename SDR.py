@@ -106,12 +106,14 @@ def chunkScan(sdr, recordingDuration, rate):
 #
 ############################################################################
 def runRecognize(sample):
+    print(f"[DEBUG] Input sample length: {len(sample)} samples")
+    print(f"[DEBUG] Input sample duration: {len(sample) / 2.56e6:.2f} seconds at 2.56MHz")
     phase_diff = np.angle(sample[1:] * np.conj(sample[:-1]))  #actually demodulates (data stored in frequency)
     # --- Downsample to audio rate ---
     audio = decimate(phase_diff, 6)        
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
-    print("[DEBUG] normalized")
+    print(f"[DEBUG] Audio duration: {len(audio) / (2.56e6/6):.2f} seconds at ~426kHz")
     
         
     with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as tmp:

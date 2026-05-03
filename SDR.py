@@ -11,10 +11,19 @@ import soundfile as sf
 import tempfile
 import os
 import psycopg2
+import threading
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+import uvicorn
 
 with open("dejavu.cnf.SAMPLE") as f:
     config = json.load(f)
 djv = Dejavu(config)
+
+app = FastAPI()
+
+latest_scan = []
+scan_lock = threading.Lock()
 
 
 ############################ Basic signal I/O: #############################
@@ -364,6 +373,29 @@ def findAllSignalsInFM(sdr, recordingDuration):
     ans = removeDuplicateStations(rawAns)
     print("Accepted signal count: " + str(len(ans)))
     return ans
+
+def updateSSEData(data):
+    global latest_scan
+    with scan_lock:
+        latest_scan = list(data)
+
+@app.get("/api/sse/stations")
+def stream_stations():
+    def event_stream():
+        last_payload = None
+        while True:
+            with scan_lock:
+                payload = json.dumps(latest_scan)
+
+            if payload != last_payload:
+                yield f"data: {payload}\n\n"
+                last_payload = payload
+            else:
+                yield ": keep-alive\n\n"
+
+            time.sleep(1)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
              
 ###########################################################################
 def main():
@@ -378,6 +410,8 @@ def main():
         allDetectedSignals = findAllSignalsInFM(sdr, 5)
         allFingerPrintedSignals = recognizeAllSignals(allDetectedSignals)
 
+        updateSSEData(allFingerPrintedSignals)
+
         with open("/code/ddb_prototype/songs.json", "w") as file: 
             json.dump(allFingerPrintedSignals, file, indent=1)
 
@@ -389,7 +423,8 @@ def main():
     sdr.close() # do 3 minute
 
 if __name__ == "__main__":
-    main()
+    threading.Thread(target=main, daemon=True).start()
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 

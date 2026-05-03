@@ -13,6 +13,7 @@ MUSIC_DIR = sys.argv[1]
 
 with open("dejavu.cnf.SAMPLE") as f:
     config = json.load(f)
+print(f"Using fingerprint_limit: {config.get('fingerprint_limit')}")
 
 def get_audio_files(directory):
     files = []

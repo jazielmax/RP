@@ -19,6 +19,8 @@ services:
       - .:/code
       - /dev/bus/usb:/dev/bus/usb 
     working_dir: /code  # <---- Set working directory
+    ports:
+      - "8000:8000"
     devices:
       - /dev/bus/usb:/dev/bus/usb  
     depends_on:

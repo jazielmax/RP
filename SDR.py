@@ -109,12 +109,12 @@ def runRecognize(sample):
     audio = decimate(phase_diff, 6)        
     # Normalize
     audio /= np.max(np.abs(audio))          #scales between -1 and 1 (volume reasons)
-    #actual_rate = original_rate // 6   # 256000 / 6 = 42666.66...
+    actual_rate = original_rate // 6   # 256000 / 6 = 42666.66...
     print("[DEBUG] normalized")
     
         
     with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as tmp:
-        sf.write(tmp.name, audio.astype(np.float32), 48000, format='FLAC')  ##sf.write(tmp.name, audio.astype(np.float32), int(actual_rate), format='FLAC')  
+        sf.write(tmp.name, audio.astype(np.float32), int(actual_rate), format='FLAC')  
     temp_path = tmp.name
     print(f"[DEBUG] temp file created: {temp_path}")
     try:

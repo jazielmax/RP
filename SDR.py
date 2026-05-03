@@ -422,9 +422,9 @@ def main():
     # TODO:  When exit call recieved from frontend, close sdr object
     sdr.close() # do 3 minute
 
-if __name__ == "__main__":
+@app.on_event("startup")
+def start_sdr():
     threading.Thread(target=main, daemon=True).start()
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 

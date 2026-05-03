@@ -12,17 +12,18 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - db_network
+
   python:
     build:
       context: ./docker/python
     volumes:
       - .:/code
-      - /dev/bus/usb:/dev/bus/usb 
-    working_dir: /code  # <---- Set working directory
+      - /dev/bus/usb:/dev/bus/usb
+    working_dir: /code
     ports:
       - "8000:8000"
     devices:
-      - /dev/bus/usb:/dev/bus/usb  
+      - /dev/bus/usb:/dev/bus/usb
     depends_on:
       - db
     networks:
@@ -30,7 +31,8 @@ services:
     ulimits:
       memlock: -1
       rtprio: 99
-    #privileged: true
+    command: uvicorn SDR:app --host 0.0.0.0 --port 8000
+
 networks:
   db_network:
 

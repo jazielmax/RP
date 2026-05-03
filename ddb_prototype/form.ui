@@ -156,7 +156,7 @@ border-color: rgb(79, 79, 79);</string>
        <rect>
         <x>20</x>
         <y>8</y>
-        <width>50</width>
+        <width>60</width>
         <height>25</height>
        </rect>
       </property>
@@ -1251,7 +1251,7 @@ font: 12pt &quot;Segoe UI&quot;;</string>
       <rect>
        <x>370</x>
        <y>10</y>
-       <width>60</width>
+       <width>80</width>
        <height>30</height>
       </rect>
      </property>

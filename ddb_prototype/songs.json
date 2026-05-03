@@ -1,23 +1,162 @@
 [
  {
-  "title": null,
-  "artist": null,
-  "genre": null,
+  "title": "",
+  "artist": "",
+  "genre": "",
   "year": 0,
-  "station": "96.0 FM"
+  "station": "88.1 FM",
+  "strength": 10.000510343719265
  },
  {
-  "title": null,
-  "artist": null,
-  "genre": null,
+  "title": "",
+  "artist": "",
+  "genre": "",
   "year": 0,
-  "station": "100.7 FM"
+  "station": "89.3 FM",
+  "strength": 8.434465412985844
  },
  {
-  "title": null,
-  "artist": null,
-  "genre": null,
+  "title": "",
+  "artist": "",
+  "genre": "",
   "year": 0,
-  "station": "103.7 FM"
+  "station": "90.5 FM",
+  "strength": 5.5665844339384485
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "94.7 FM",
+  "strength": 2.2001845459915073
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "95.1 FM",
+  "strength": 10.192787995946762
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "96.1 FM",
+  "strength": 23.626343612814672
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "96.9 FM",
+  "strength": 3.1855137661443607
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "99.9 FM",
+  "strength": 10.88816460889275
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "100.7 FM",
+  "strength": 30.61313927633444
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "101.6 FM",
+  "strength": 5.197316705929014
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "102.5 FM",
+  "strength": 13.940358397724125
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "103.5 FM",
+  "strength": 5.654428038732502
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "104.1 FM",
+  "strength": 20.045640886984994
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "104.6 FM",
+  "strength": 6.207876929838774
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "105.1 FM",
+  "strength": 2.521476688145774
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "106.5 FM",
+  "strength": 18.112347719676357
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "106.9 FM",
+  "strength": 2.0422322560567134
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "107.5 FM",
+  "strength": 16.470813858263895
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "107.9 FM",
+  "strength": 2.2366856979050977
+ },
+ {
+  "title": "",
+  "artist": "",
+  "genre": "",
+  "year": 0,
+  "station": "108.8 FM",
+  "strength": 3.4092656817579954
  }
 ]

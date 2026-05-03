@@ -1,8 +1,8 @@
 ###########################################################################################
-# Daniel, David, Ben (DDB)
+# Daniel, David, Ben (Ident-FM)
 # CSC 363
 # frontend.py
-# Last modified: April 16, 2026
+# Last modified: April 29, 2026
 # purpose: frontend to be used in 363 project. created using qt creator and pyside6.
 ###########################################################################################
 
@@ -11,7 +11,7 @@ import sys
 import json
 from PySide6.QtWidgets import QApplication, QMainWindow, QHeaderView, QAbstractItemView
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, QTimer, QTime, Qt, QEvent
+from PySide6.QtCore import QFile, QTimer, QTime, Qt, QEvent, QSortFilterProxyModel
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 
 ###########################################################################################
@@ -71,7 +71,7 @@ class FrontEnd(QMainWindow):
 
                 # set headers of dashboard
                 self.model.setHorizontalHeaderLabels([
-                    "Title", "Artist", "Genre", "Year", "Radio Station"
+                    "Title", "Artist", "Genre", "Year", "Radio Station", "Signal Strength"
                 ])
 
                 # load song data from json file
@@ -80,8 +80,17 @@ class FrontEnd(QMainWindow):
                 # load all data into model first
                 self.load_table_data(self.all_data)
 
-                # attach model to table for dashboard
-                table.setModel(self.model)
+                # wrap model in a proxy so the table can be sorted by signal strength
+                self.proxy_model = QSortFilterProxyModel()
+                self.proxy_model.setSourceModel(self.model)
+                self.proxy_model.setSortRole(Qt.UserRole)
+
+                # attach proxy model to table for dashboard
+                table.setModel(self.proxy_model)
+
+                # enable sorting and default to signal strength descending (strong on top)
+                table.setSortingEnabled(True)
+                table.sortByColumn(5, Qt.DescendingOrder)
 
                 # populate dropdown widgets with unique values
                 self.populate_combo_box(self.ui.genre_cmb, 2)
@@ -156,6 +165,18 @@ class FrontEnd(QMainWindow):
                 return selected_genre != "" or selected_start_year != "" or selected_end_year != ""
 
         ###########################################################################################
+        # function name - get_current_filters(self)
+        # parameters - self, the application itself
+        # returns the currently selected filter values so they can be restored after refresh
+        ###########################################################################################
+        def get_current_filters(self):
+                return {
+                        "genre": self.ui.genre_cmb.currentText().strip(),
+                        "start_year": self.ui.year_cmb_1.currentText().strip(),
+                        "end_year": self.ui.year_cmb_2.currentText().strip()
+                }
+
+        ###########################################################################################
         # function name - start_refresh_timer(self)
         # parameters - self, the application itself
         # starts or restarts the 3 minute auto refresh timer
@@ -172,11 +193,13 @@ class FrontEnd(QMainWindow):
                 self.refresh_timer.stop()
 
         ###########################################################################################
-        # function name - reload_filter_options(self)
+        # function name - reload_filter_options(self, saved_filters=None)
         # parameters - self, the application itself
-        # reloads the dropdown choices based on the newest song data while keeping blank selected
+        #            - saved_filters, optional dictionary of existing filter selections
+        # reloads the dropdown choices based on the newest song data while optionally restoring
+        # previously selected filter values
         ###########################################################################################
-        def reload_filter_options(self):
+        def reload_filter_options(self, saved_filters=None):
                 self.ui.genre_cmb.blockSignals(True)
                 self.ui.year_cmb_1.blockSignals(True)
                 self.ui.year_cmb_2.blockSignals(True)
@@ -185,9 +208,33 @@ class FrontEnd(QMainWindow):
                 self.populate_combo_box(self.ui.year_cmb_1, 3)
                 self.populate_combo_box(self.ui.year_cmb_2, 3)
 
-                self.ui.genre_cmb.setCurrentIndex(0)
-                self.ui.year_cmb_1.setCurrentIndex(0)
-                self.ui.year_cmb_2.setCurrentIndex(0)
+                if saved_filters is not None:
+                        genre_text = saved_filters.get("genre", "")
+                        start_year_text = saved_filters.get("start_year", "")
+                        end_year_text = saved_filters.get("end_year", "")
+
+                        genre_index = self.ui.genre_cmb.findText(genre_text)
+                        start_year_index = self.ui.year_cmb_1.findText(start_year_text)
+                        end_year_index = self.ui.year_cmb_2.findText(end_year_text)
+
+                        if genre_index >= 0:
+                                self.ui.genre_cmb.setCurrentIndex(genre_index)
+                        else:
+                                self.ui.genre_cmb.setCurrentIndex(0)
+
+                        if start_year_index >= 0:
+                                self.ui.year_cmb_1.setCurrentIndex(start_year_index)
+                        else:
+                                self.ui.year_cmb_1.setCurrentIndex(0)
+
+                        if end_year_index >= 0:
+                                self.ui.year_cmb_2.setCurrentIndex(end_year_index)
+                        else:
+                                self.ui.year_cmb_2.setCurrentIndex(0)
+                else:
+                        self.ui.genre_cmb.setCurrentIndex(0)
+                        self.ui.year_cmb_1.setCurrentIndex(0)
+                        self.ui.year_cmb_2.setCurrentIndex(0)
 
                 self.ui.genre_cmb.blockSignals(False)
                 self.ui.year_cmb_1.blockSignals(False)
@@ -223,12 +270,53 @@ class FrontEnd(QMainWindow):
                         loaded_data = []
 
                         for song in json_data:
+                                # helper to clean values
+                                def clean(value):
+                                        if value is None:
+                                                return "N/A"
+                                        value = str(value).strip()
+                                        if value == "" or value.lower() == "none":
+                                                return "N/A"
+                                        return value
+
+                                title = clean(song.get("title"))
+                                artist = clean(song.get("artist"))
+                                genre = clean(song.get("genre"))
+                                station = clean(song.get("station"))
+
+                                # convert raw SNR ratio to signal strength label
+                                strength_raw = song.get("strength")
+                                if strength_raw is None:
+                                        strength = "N/A"
+                                else:
+                                        try:
+                                                snr = float(strength_raw)
+                                                if snr < 9.5:
+                                                        strength = "Weak"
+                                                elif snr < 13.0:
+                                                        strength = "Medium"
+                                                else:
+                                                        strength = "Strong"
+                                        except (ValueError, TypeError):
+                                                strength = "N/A"
+
+                                year_raw = song.get("year")
+
+                                # handle year specifically
+                                if year_raw is None:
+                                        year_value = "N/A"
+                                else:
+                                        year_value = str(year_raw).strip()
+                                        if year_value == "0" or year_value.lower() == "none" or year_value == "":
+                                                year_value = "N/A"
+
                                 loaded_data.append([
-                                        str(song.get("title", "")),
-                                        str(song.get("artist", "")),
-                                        str(song.get("genre", "")),
-                                        str(song.get("year", "")),
-                                        str(song.get("station", ""))
+                                        title,
+                                        artist,
+                                        genre,
+                                        year_value,
+                                        station,
+                                        strength
                                 ])
 
                         return loaded_data
@@ -240,22 +328,31 @@ class FrontEnd(QMainWindow):
                 except json.JSONDecodeError:
                         print(f"Error: {filename} is not valid json.")
                         return []
-
         ###########################################################################################
         # function name - reload_song_data(self)
         # parameters - self, the application itself
-        # rereads the json song file, reloads the table data, resets the filters, and updates
-        # the combo boxes to match the most recent song data
+        # rereads the json song file, reloads the table data, preserves any active filters, and
+        # updates the combo boxes to match the most recent song data
         ###########################################################################################
         def reload_song_data(self):
+                # save the current filter selections before reloading
+                saved_filters = self.get_current_filters()
+
+                # reload newest song data from the json file
                 self.all_data = self.load_song_data("songs.json")
-                self.load_table_data(self.all_data)
-                self.reload_filter_options()
 
-                self.ui.resetfilter_btn.setVisible(False)
+                # update combo boxes and restore previous selections if they still exist
+                self.reload_filter_options(saved_filters)
 
-                # restart the 3 minute refresh timer after manual refresh
-                self.start_refresh_timer()
+                # if filters are active, reapply them to the new data
+                if self.filters_are_active():
+                        self.apply_filters()
+                        self.ui.resetfilter_btn.setVisible(True)
+                        self.stop_refresh_timer()
+                else:
+                        self.load_table_data(self.all_data)
+                        self.ui.resetfilter_btn.setVisible(False)
+                        self.start_refresh_timer()
 
         ###########################################################################################
         # function name - load_table_data(self, data)
@@ -266,10 +363,18 @@ class FrontEnd(QMainWindow):
         def load_table_data(self, data):
                 self.model.setRowCount(0)
 
+                # numeric sort keys for signal strength labels (higher = stronger)
+                strength_order = {"Strong": 3, "Medium": 2, "Weak": 1, "N/A": 0}
+
                 for row_data in data:
                         row_items = []
-                        for value in row_data:
+                        for col_index, value in enumerate(row_data):
                                 item = QStandardItem(str(value))
+
+                                # store numeric sort key on the Signal Strength column
+                                if col_index == 5:
+                                        item.setData(strength_order.get(str(value), 0), Qt.UserRole)
+
                                 row_items.append(item)
                         self.model.appendRow(row_items)
 
@@ -284,7 +389,13 @@ class FrontEnd(QMainWindow):
                 unique_values = set()
 
                 for row_data in self.all_data:
-                        unique_values.add(str(row_data[column_index]))
+                        value = str(row_data[column_index]).strip()
+
+                        # skip empty, whitespace only, invalid year values, and N/A values
+                        if value == "" or value == "0" or value == "N/A":
+                                continue
+
+                        unique_values.add(value)
 
                 combo_box.clear()
                 combo_box.addItem("")
@@ -329,38 +440,41 @@ class FrontEnd(QMainWindow):
                         genre = row[2]
                         year = row[3]
                         station = row[4]
+                        strength = row[5]
 
                         # filter by genre only if a genre was selected
-                        if selected_genre != "" and genre != selected_genre:
+                        if selected_genre != "" and genre.strip() != selected_genre:
                                 continue
 
-                        # filter by year range only if a year was selected
-                        try:
-                                year_int = int(year)
-                        except ValueError:
-                                continue
-
-                        if selected_start_year != "" and selected_end_year != "":
-                                start_year = int(selected_start_year)
-                                end_year = int(selected_end_year)
-
-                                if start_year > end_year:
-                                        start_year, end_year = end_year, start_year
-
-                                if year_int < start_year or year_int > end_year:
+                        # only apply year filtering when a year filter is selected
+                        if selected_start_year != "" or selected_end_year != "":
+                                # skip rows where year is not a valid number
+                                if not year.strip().isdigit():
                                         continue
 
-                        elif selected_start_year != "":
-                                start_year = int(selected_start_year)
-                                if year_int < start_year:
-                                        continue
+                                year_int = int(year.strip())
 
-                        elif selected_end_year != "":
-                                end_year = int(selected_end_year)
-                                if year_int > end_year:
-                                        continue
+                                if selected_start_year != "" and selected_end_year != "":
+                                        start_year = int(selected_start_year)
+                                        end_year = int(selected_end_year)
 
-                        filtered_data.append([title, artist, genre, year, station])
+                                        if start_year > end_year:
+                                                start_year, end_year = end_year, start_year
+
+                                        if year_int < start_year or year_int > end_year:
+                                                continue
+
+                                elif selected_start_year != "":
+                                        start_year = int(selected_start_year)
+                                        if year_int < start_year:
+                                                continue
+
+                                elif selected_end_year != "":
+                                        end_year = int(selected_end_year)
+                                        if year_int > end_year:
+                                                continue
+
+                        filtered_data.append([title, artist, genre, year, station, strength])
 
                 self.load_table_data(filtered_data)
 
